@@ -1,0 +1,492 @@
+#META 1|LLM API、Prompt 与结构化输出|从 HTTP 工程师到模型调用工程师 · 里程碑 M1
+#TOC
+讲次 1-1 · 能力模型与 LLM API 基础
+讲次 1-2 · Streaming 流式输出
+讲次 1-3 · Prompt Engineering
+讲次 1-4 · 结构化输出与 LLM Gateway
+本章小结
+Lab1 验收清单
+下一章预告
+#SECTION 讲次 1-1 · 能力模型与 LLM API 基础
+#PAGE 本章学习地图
+• 目标:解决【如何稳定调用模型】
+• 四讲:API基础 → Streaming → Prompt → 结构化+Gateway
+• 产出:平台入口层 LLM Gateway(M1 里程碑)
+• 对应工程:src/agent_platform/gateway/
+>>学完即可在简历写"统一模型调用服务"
+#PAGE 你的后端经验值多少钱
+• API 服务开发:LLM 服务同样是 HTTP 服务
+• 数据库与缓存:成本治理的直接迁移
+• 异步任务/权限认证/日志监控
+• 限流、重试、熔断:本章全部复用
+>>转型不是清零,是能力平移
+#PAGE 需要补齐的 Agent 新能力
+• 模型调用与参数语义
+• Prompt 与结构化输出
+• 工具协议(Function Calling/MCP)
+• 上下文管理、Agent 状态机、Eval
+>>前两项本章拿下,后三项后续章节
+#PAGE Chat Completions API 请求结构
+• POST /v1/chat/completions
+• 必填:model + messages 数组
+• 可选:temperature/top_p/max_tokens
+• OpenAI Compatible 已成事实标准
+>>DeepSeek/vLLM/TGI 全部兼容此协议
+#PAGE 消息角色:四种 role
+• system:全局指令,模型岗位说明书
+• user:用户输入
+• assistant:模型历史回复
+• tool:工具执行结果(第2章登场)
+>>角色错放是最常见调用错误
+#PAGE 响应结构:三层拆解
+• choices[0].message.content:正文
+• usage:prompt/completion_tokens
+• finish_reason:stop/length/tool_calls
+• length=被 max_tokens 截断
+>>监控必须同时看 usage 与 finish_reason
+#PAGE temperature:采样温度
+• 概念:缩放 logits 分布平坦度
+• 越高越随机,越低越确定
+• 应用:抽取/分类任务用 0~0.3
+• 创作类任务 0.7~1.0
+#PAGE temperature 踩坑与优化
+• 坑:评测任务开了高温,指标抖动
+• 坑:temperature 与 top_p 同时大改
+• 优化:生产默认 0,按任务分级覆盖
+• 优化:参数进配置中心,可灰度
+>>固定温度是可复现性的第一步
+#PAGE top_p 与 max_tokens
+• top_p:核采样,截断累计概率
+• 经验:只调其一,别同时大改
+• max_tokens:输出上限,防失控成本
+• max_tokens 太小 → 内容被腰斩
+#PAGE Token:计费与延迟的单位
+• 1 token ≈ 0.75 个英文单词
+• 中文约 1 字 ≈ 0.6~1 token
+• 计费 = 输入+输出 token 之和
+• 延迟与输出 token 数近似线性
+>>做成本预算,先学会估 token
+#PAGE Context Window:模型的作业本
+• 输入+输出共享同一个窗口
+• 超窗直接报错或静默截断
+• 长窗口 ≠ 免费注意力
+• 有效注意力随长度衰减(lost in the middle)
+#PAGE 多模型调用的现实
+• 不同厂商 API 字段有差异
+• 价格/能力/上下文长度分层
+• 策略:强模型难任务,弱模型杂任务
+• 统一封装 = 供应商可替换
+>>网关层的价值从这里开始
+#PAGE 错误类型全景
+• 429 限流:请求太猛
+• 401/403 鉴权:Key 失效
+• 408/超时:推理太慢
+• 5xx:服务端故障
+• 400:参数错误(schema 不合法)
+#PAGE 重试策略:指数退避
+• 只重试可重试错误(429/5xx/超时)
+• 退避:1s → 2s → 4s + 随机抖动
+• 上限 3 次,总时长别超外层预算
+• 400 参数错重试无意义
+>>非幂等操作禁止盲目重试
+#PAGE 超时预算分级
+• 本地计算:100ms 级
+• 同机房 RPC:1s 级
+• LLM 推理:30~90s 级
+• 每层独立预算,并跨层传播
+>>下游没预算了就别再发请求
+#PAGE 平台工程对照:gateway 域模型
+• ChatMessage/ChatRequest/ChatResponse
+• Usage.total_tokens 派生不变量
+• Pydantic 校验挡住脏数据入口
+>>12 个 TDD 测试守护这些不变量
+>>代码:src/agent_platform/gateway/domain.py
+#PAGE MockProvider:确定性的价值
+• 按 prompt 关键词回放预设脚本
+• CI 零外部依赖、断言可重复
+• call_count 可断言调用次数
+>>LLM 输出不可复现会毁掉 TDD 节奏
+#PAGE 1-1 自测
+#PAGE 鉴权与请求头实践
+• Authorization: Bearer <api_key>
+• Key 走环境变量/密钥服务,不入库
+• 网关层统一注入,业务侧零 Key
+>>平台 OPENAI_API_KEY 只在 .env
+#PAGE 流式与非流式的成本差异
+• 计费相同,体验与失败代价不同
+• 非流式超时=整单作废重计
+• 流式取消只计已生成部分
+>>长输出任务默认流式
+#PAGE 模型选择矩阵
+• 维度:能力/价格/上下文/延迟
+• 难任务(推理/代码)→ 强模型
+• 杂任务(分类/抽取)→ 小模型
+• 矩阵进配置,随价格变化调整
+#PAGE 多模型路由设计
+• 链式:primary → fast → local
+• 失败原因决定是否换链
+• attempts 全程留痕
+>>平台 ModelRouter 已实现
+#PAGE 供应商抽象接口设计
+• LLMProvider 协议两个方法
+• complete:一次性返回
+• stream_events:增量+末帧用量
+>>新增供应商=新增一个实现类
+#PAGE 应用:客服问答参数基线
+• temperature 0.3:稳定带一点语气
+• max_tokens 512:控制话术长度
+• system:角色+禁答清单
+>>基线进配置中心,按业务覆盖
+#PAGE 踩坑:Key 泄露事故复盘
+• 事故:示例代码把 Key 提交进仓库
+• 影响:被扫描机器人抓取盗刷
+• 处置:立即轮转+历史清除
+• 预防:pre-commit 扫描 sk- 模式
+#QUIZ 自测 · LLM API 基础
+Q1 finish_reason=length 说明什么?
+Q2 哪些错误值得重试,哪些不值得?
+Q3 为什么 temperature=0 是评测基线?
+Q4 你的项目里哪个参数最该进配置中心?
+#SECTION 讲次 1-2 · Streaming 流式输出
+#PAGE 为什么必须流式
+• 推理延迟秒级起步,长输出数十秒
+• 串行等待:用户盯着白屏离开
+• 流式:首字延迟 <1s,体验质变
+• 附加收益:用户可提前取消省 Token
+#PAGE SSE 协议本质
+• HTTP 长连接 + 文本事件流
+• 帧格式:data: {json}\n\n
+• 结束标记:data: [DONE]
+• 单向服务端推送,浏览器原生支持
+>>比 WebSocket 轻,够用就是最好
+#PAGE FastAPI 流式转发
+• StreamingResponse 包装 async 生成器
+• media_type=text/event-stream
+• 逐块转发,不做全量缓冲
+>>代码:api/app.py 的 sse() 生成器
+#PAGE 前端/CLI 消费
+• 浏览器:EventSource 或 fetch 流读取
+• CLI:逐块 print 实现打字机效果
+• 每帧 JSON:delta 增量 + 末帧 usage
+>>平台实测:curl -N 可见打字机输出
+#PAGE 中断与取消
+• 用户点击停止 → 关闭连接
+• 服务端检测写失败即终止推理
+• 省下的是真金白银的 Token
+>>取消也必须留痕:用量已产生部分
+#PAGE 流式异常处理
+• 网络抖动:连接中断而非报错
+• 限流:可能在流中途触发
+• 策略:已收内容保留 + 提示重试
+• 禁止整段重流造成双倍计费
+#PAGE 长文本断点保存
+• 会话断开 → 丢弃还是续传?
+• 方案:持久化已生成内容+序列号
+• 恢复:从断点继续生成
+• 本平台:任务摘要即恢复锚点
+>>断点续传是长文任务的刚需
+#PAGE 踩坑:缓冲毁掉流式
+• 反向代理默认缓冲响应体
+• 现象:打字机变成"憋大招"
+• 修复:nginx 加 X-Accel-Buffering: no
+• 自检:curl 必须逐块可见
+#PAGE 踩坑:SSE 帧粘包
+• 两帧数据连在同一个 chunk 里
+• 解析器按 \n\n 切分才能还原
+• 修复:跨 chunk 维护行缓冲
+>>协议细节在集成测试里暴露
+#PAGE 优化:流式下的成本留痕
+• usage 在流结束后才有(上游行为)
+• 平台方案:末帧强制携带 usage
+• 上游不带时按内容长度合成
+>>没有留痕,成本治理无从谈起
+#PAGE 优化:首字延迟 P95
+• 指标:time-to-first-token
+• 优化:路由到近机房/更快模型
+• 优化:短 system prompt 优先命中缓存
+>>TTFT 是流式体验的北极星
+#PAGE GraphQL 与流式的分工
+• GraphQL:聚合查询面(任务/报表)
+• SSE:LLM 流式响应专用通道
+• 两者共存于同一 FastAPI 应用
+>>平台 /graphql 与 /v1/chat/completions
+#PAGE 1-2 自测
+#PAGE SSE 帧结构图解
+• 事件三要素:event/data/id
+• 最简实现只用 data 行
+• 空行分隔帧,双换行必须保留
+>>自己抓包看一次胜过十页文档
+#PAGE 客户端重连语义
+• EventSource 断线自动重连
+• 服务端需幂等:避免重复生成
+• 会话标识绑定生成任务
+>>重连风暴要做退避
+#PAGE 断点续传 Last-Event-ID
+• 客户端带着最后收到的 id 重连
+• 服务端从断点继续推送
+• 平台映射:任务摘要做恢复锚点
+#PAGE 应用:长文写作流水线
+• 大纲流式确认 → 分节生成
+• 每节独立可取消可重写
+• 全文状态持久化支撑恢复
+#PAGE 踩坑:取消后的资源泄漏
+• 客户端断开,生成器未感知
+• 后台推理继续烧 Token
+• 修复:请求取消事件联动 Abort
+• 自检:取消后 usage 停止增长
+#PAGE 优化:分块大小调优
+• 块太小:帧开销大,吞吐低
+• 块太大:打字机卡顿
+• 经验:按句/按 16~32 字符切块
+>>平台 MockProvider 块长可配置
+#PAGE 优化:多模型流式聚合
+• 同题并发两模型,取先到流
+• 差异过大时触发仲裁
+• 成本翻倍,仅关键路径使用
+>>对冲是尾延迟优化手段
+#QUIZ 自测 · Streaming
+Q1 SSE 与 WebSocket 选型依据?
+Q2 流式中途限流,已生成内容怎么处理?
+Q3 为什么代理层会毁掉打字机效果?
+Q4 TTFT 为什么比总时长更重要?
+#SECTION 讲次 1-3 · Prompt Engineering
+#PAGE System Prompt:岗位说明书
+• 设定全局行为基调与能力边界
+• 声明输出格式与禁止事项
+• 与 user 消息隔离,防注入第一道墙
+>>一切可复用的指令都该进 system
+#PAGE 角色定义与行为约束
+• 明确角色:代码审查员/数据分析师
+• 约束:只答职责范围内的问题
+• 越界请求 → 礼貌拒绝并引导
+>>角色越具体,输出越稳定
+#PAGE 输出风格控制
+• 详细程度:一句话/要点/长文
+• 语气:专业/口语/客服话术
+• 结构:Markdown 标题/表格/JSON
+>>风格也是验收标准的一部分
+#PAGE Few-shot:示例的力量
+• 给 2~3 个"输入→输出"范例
+• 对格式敏感任务立竿见影
+• 示例覆盖边界情况效果最佳
+• 示例本身成为 Prompt 的一部分资产
+>>JSON 输出任务先试 Few-shot
+#PAGE 任务拆解:降幻觉的核心手段
+• 一步到位 → 多步小任务链
+• 每步只做一件事,可单独校验
+• 步骤间传结构化数据而非自然语言
+>>链式拆解 = 为第3章 Agent Loop 铺路
+#PAGE Prompt 模板化
+• 可变参数嵌入固定模板
+• 模板即代码:进仓库、走评审
+• 变量渲染前做转义与校验
+>>模板库由 Gateway 统一管理
+#PAGE Prompt 版本管理
+• Prompt 改动必须可回溯
+• 版本 + 变更原因 + 适用场景
+• 每次改动跑回归(第5章 Eval)
+>>"感觉变好了"不是版本记录
+#PAGE 应用:代码审查 Prompt 实例
+• system:你是资深代码审查员
+• 约束:只输出问题清单+严重级别
+• few-shot:一个问题样例
+• 输出:Markdown 表格
+>>教学平台 prompt 模板可参考此结构
+#PAGE 应用:数据抽取 Prompt 实例
+• 目标:从合同抽取金额/日期/主体
+• temperature=0 + JSON Schema
+• Few-shot 给一个含嵌套结构的样例
+• 抽取失败必须显式返回 null 字段
+>>宁可空缺,不许编造
+#PAGE 踩坑:Prompt 注入
+• 用户输入:"ignore previous instructions"
+• 直拼进 system → 指令被覆盖
+• 防护一:用户输入只进 user 消息
+• 防护二:输出格式校验兜底
+#PAGE 踩坑:越改越长的 Prompt
+• 每次出错就补一段规则
+• 结果:互相冲突、模型顾此失彼
+• 修复:定期重构,合并同类约束
+• 用回归测试证明删规则没退化
+#PAGE 优化:Prompt 的注意力预算
+• 关键约束放开头或结尾
+• 中段内容最容易被忽略
+• 无关示例及时下线
+>>上下文工程在下一章系统化
+#PAGE 优化:模板 A/B 与灰度
+• 新旧模板同时注册,Flag 控制
+• 小流量验证指标再全量
+• 平台 FeatureFlags 一键回滚
+>>Prompt 是生产资产,按代码对待
+#PAGE 1-3 自测
+#PAGE 实验:system 与 user 的优先级
+• 冲突指令分别放 system/user
+• 观察模型听谁的
+• 结论:system 优先但可被越狱
+>>结论:注入防护不能只靠位置
+#PAGE 负面指令的正确写法
+• "不要编造"不如"不确定时输出未知"
+• 给出替代行为而非只说禁止
+• 每条禁止配一个正例
+#PAGE 输出结构指令模板化
+• 固定段落:结论/依据/建议
+• 固定字段: JSON 键名写死
+• 模板变量只留业务数据
+>>结构化输出的前置保障
+#PAGE 应用:会议纪要模板
+• 输入:转写文本
+• 模板:决议/待办/风险三段
+• 约束:待办必须带负责人与期限
+• 输出直接进协作工具
+#PAGE 踩坑:示例泄漏进生产输出
+• Few-shot 示例被模型复读
+• 现象:输出里出现"示例:"字样
+• 修复:示例加显著分隔与去重指令
+>>回归用例要覆盖示例复读
+#PAGE 优化:Prompt 压缩
+• 删除客套话与重复约束
+• 合并同类规则
+• 压缩后跑回归验证不退化
+>>Token 预算是钱,压缩是省钱
+#PAGE 优化:基于评估的迭代流程
+• 改动前:固化当前指标基线
+• 改动后:全量回归+人工抽检
+• 双清单:improved/regressed
+>>这套流程第5章会平台化
+#QUIZ 自测 · Prompt Engineering
+Q1 为什么用户输入永远不进 system?
+Q2 Few-shot 在什么任务上收益最大?
+Q3 你如何证明一次 Prompt 修改是改进?
+Q4 模板化解决了什么工程问题?
+#SECTION 讲次 1-4 · 结构化输出与 LLM Gateway
+#PAGE 为什么禁止裸解析自然语言
+• Agent 需要机器可读的决策
+• 正则解析自由文本 = 脆弱管道
+• 结构化 = 可校验/可重试/可降级
+>>这是 Demo 与工程的分水岭
+#PAGE JSON Schema:结构契约
+• 字段名/类型/必填/枚举
+• 是模型、Runtime、审计三方共享契约
+• 也是第2章工具参数的校验基石
+#PAGE Pydantic:三合一利器
+• 定义结构 + Schema 导出 + 反序列化
+• 校验失败抛具体字段错误
+• 与 FastAPI/strawberry 无缝集成
+>>平台全链路 Pydantic
+#PAGE 模型原生结构化输出
+• API 层直接传 response_format
+• 模型保证 JSON 合法(约束解码)
+• 平台:response_schema 字段已预留
+• 降级:不支持时退回 Few-shot 约束
+#PAGE Schema 校验闭环
+• 模型返回 → json.loads → Pydantic
+• 失败:把报错反喂给模型自修复
+• 二次失败:降级默认值/缓存
+>>错误反喂是自修复的标准姿势
+#PAGE 应用:工单分类器
+• 输入:用户工单原文
+• Schema:category/urgency/summary
+• 校验:category 限定枚举值
+• 失败重试一次后走人工兜底
+#PAGE 应用:NL2SQL 前置校验
+• 模型产出 SQL 与涉及的表
+• Schema 校验字段白名单
+• 只读账号 + LIMIT 强制注入
+>>结构化让"危险操作"可拦截
+#PAGE 踩坑:JSON 外壳污染
+• 模型输出 ```json 代码围栏
+• 直接 loads 失败
+• 修复:剥围栏 + 容错解析
+• 根治:原生结构化输出
+#PAGE 踩坑:枚举值幻觉
+• 要求输出 A/B/C,模型输出 D
+• Schema 校验挡下 → 反喂纠错
+• 优化:在 prompt 里重复枚举约束
+>>校验器是最后一道防线
+#PAGE LLM Gateway:为什么需要统一入口
+• 密钥集中管理,业务侧零 Key
+• 多厂商协议差异屏蔽
+• 成本留痕/限流/降级集中实现
+>>平台 20 项能力的第一项
+#PAGE Gateway 核心职责清单
+• OpenAI Compatible 统一协议
+• Streaming 逐块代理
+• Schema 传入机制屏蔽底层差异
+• 请求/响应双向 Pydantic 校验
+#PAGE Gateway 的路由与降级
+• ModelRouter:按链 primary→fast
+• ProviderError 触发 fallback
+• 全失败 → AllProvidersFailedError
+• attempts 留痕供 Trace 分析
+>>平台已实现,测试守护
+#PAGE Gateway 的可观测性
+• 每次调用:模型/参数/用量/耗时
+• 失败原因结构化记录
+• 为第6章成本账本供数
+>>gateway.py 只缺真实供应商适配
+#PAGE 踩坑:网关变单点
+• 网关挂了全部业务瘫痪
+• 多副本部署 + 健康检查
+• 客户端保留直连降级路径
+>>无状态服务才敢水平扩
+#PAGE 优化:语义缓存(预告)
+• 相同/相似问题直接回缓存
+• 精确 hash 命中 → 向量语义命中
+• 第4章 Embedding 就绪后落地
+>>命中率 30% 即省近三成成本
+#PAGE Schema 设计原则
+• 必填最小化:可选字段显式可空
+• 枚举优先于自由字符串
+• 嵌套不超过两层
+>>Schema 越简单遵循度越高
+#PAGE 反喂重试的 Prompt 构造
+• 附上原始输出+校验错误详情
+• 明确要求:只修错误,别重写
+• 附上 Schema 全文
+>>反喂一次的修复率通常超八成
+#PAGE 降级策略设计
+• 缓存上次成功结果
+• 业务默认值(标记降级)
+• 转人工队列
+>>降级路径必须有测试覆盖
+#PAGE 应用:周报复生成器
+• Schema:指标名/值/环比/归因
+• 归因字段强制引用原文片段
+• 校验:数值类型+环比方向合法
+#PAGE 踩坑:大 Schema 降低遵循度
+• 字段超过 20 个错误率飙升
+• 修复:拆多次调用+程序合并
+• 或顶层拆 subsection 分步抽取
+#PAGE 优化:Schema 缓存与复用
+• 常用 Schema 进模板库
+• 版本化:字段变更走评审
+• 导出 JSON Schema 供多语言消费
+#PAGE Gateway 部署拓扑
+• 无状态多副本 + LB
+• 依赖:Redis(限流)/PG(留痕)
+• 健康检查:LLM Provider 探活
+>>单机 Compose 验证,多节点同构
+#PAGE M1 里程碑:平台已有能力
+• Provider 抽象 + Mock 确定性回放
+• 模型路由 fallback + 留痕
+• SSE 流式 + GraphQL 查询面
+• 68 个测试,覆盖率 96%
+>>真实供应商只需 .env 切换
+#PAGE 本章小结
+• 能力模型:后端优势平移+四项新能力
+• API/参数/Token:调用稳定性基石
+• Streaming:体验与成本的双重解
+• Prompt/结构化:从 Demo 到工程
+>>下一章:让模型长出手
+#PAGE Lab1 验收清单
+• [ ] Mock 单测全绿,覆盖率 ≥80%
+• [ ] SSE 打字机效果(curl -N 演示)
+• [ ] 主模型故障自动 fallback(attempts=2)
+• [ ] 结构化输出反喂重试成功
+• [ ] Prompt 模板进仓库并带版本号
+#PAGE 下一章预告
+• Function Calling:模型如何选工具
+• Tool Registry:工具如何被治理
+• MCP:工具如何标准化接入
+• 目标里程碑 M2:工具调用基础设施
+>>把"会说话"的模型变成"能干活"的模型

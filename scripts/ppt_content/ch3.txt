@@ -1,0 +1,458 @@
+#META 3|Agent Loop、State Machine 与 Codebase Agent|从单轮调用到长程任务 · 里程碑 M3
+#TOC
+讲次 3-1 · 从 Tool Agent 到 Agent Loop
+讲次 3-2 · Planning 与任务拆解
+讲次 3-3 · State Machine 与 Checkpoint
+讲次 3-4 · Sandbox 与执行边界
+讲次 3-5 · Harness、LangGraph 与 Codebase Agent
+本章小结
+Lab3 验收清单
+下一章预告
+#SECTION 讲次 3-1 · 从 Tool Agent 到 Agent Loop
+#PAGE 单轮 Tool Calling 的三堵墙
+• 多步任务:一步给不出完整答案
+• 错误恢复:工具失败就终结
+• 上下文累积:每轮独立失忆
+>>结论:复杂任务需要循环
+#PAGE ReAct:推理与行动交替
+• Reason:我要做什么、为什么
+• Act:调用工具
+• Observe:看结果再想下一步
+• 循环直到任务完成
+>>Agent Loop 的思想源头
+#PAGE Plan-and-Execute 模式
+• 先出完整计划,再逐步执行
+• 优点:全局视角,成本可控
+• 缺点:计划跟不上变化
+>>与 ReAct 的取舍看任务稳定性
+#PAGE 五段循环标准形态
+• observe → think/plan → act
+• → observe → finalize
+• 平台:Action(call_tool/finish)表达
+• Decider=思考,Executor=行动
+#PAGE 循环终止条件设计
+• finish 动作:模型自己认为完成
+• max_iterations:硬上限防失控
+• 死循环熔断:重复动作检测
+• 外部取消:用户叫停
+>>四个出口一个都不能少
+#PAGE 死循环识别算法
+• 连续 N 个完全相同的动作签名
+• 平台:N=3 触发 LoopFailedError
+• 签名=kind+tool+args 的规范序列化
+>>实测:重复天气查询被熔断
+#PAGE 任务中断与恢复
+• 进程被杀:状态在 Checkpoint 里
+• 重启后 resume_from 续跑
+• 历史观察完整带回
+>>平台实测:中断恢复演示通过
+#PAGE 应用:多步研究任务
+• 搜资料 → 读报告 → 交叉验证
+• → 生成结论 → 引用核对
+• 每步都是一次工具调用
+>>第5章 Multi-Agent 会并行化它
+#PAGE 应用:数据修复流水线
+• 扫描异常数据 → 定位原因
+• → 生成修复 SQL → 审核
+• → 执行 → 校验 → 汇报
+>>修复类任务是 Loop 主战场
+#PAGE 踩坑:LLM 决策的抖动
+• 同一状态两次决策不同
+• 循环在两个动作间震荡
+• 缓解:温度0+观察去重+熔断
+#PAGE 踩坑:观察结果撑爆上下文
+• 工具返回大 JSON 全量回灌
+• 两轮就超窗
+• 优化:观察压缩与摘要
+>>第4章 Context 工程系统解决
+#PAGE 踩坑:假完成
+• 模型提前 finish,任务没做完
+• 缓解:完成定义进 Prompt
+• 审计:finish 前的步骤完整性检查
+#PAGE 优化:Loop 的成本预算
+• 每轮记录 Token 消耗
+• 预算耗尽强制收敛
+• 收敛策略:总结现状输出半成品
+>>成本失控常发生在循环里
+#PAGE 优化:并发工具执行
+• 无依赖动作并行发起
+• gather+超时隔离
+• 延迟大幅下降
+>>平台第5章 Supervisor 同款机制
+#PAGE 优化:循环可视化
+• 每轮:思考摘要+动作+观察
+• 前端时间线回放
+• 调试效率倍增
+>>Trace 树是第6章的地基
+#PAGE 平台工程对照
+• orchestration/loop.py 全量实现
+• 12 个测试覆盖四条终止路径
+• ScriptedDecider 让测试确定化
+>>先测骨架,再接真模型
+#PAGE 3-1 自测
+#PAGE ReAct 的失败模式
+• 思考与行动脱节:想A做B
+• 观察视而不见:重复失败动作
+• 缓解:观察回灌强制引用
+>>让"看结果"成为结构约束
+#PAGE 五段循环的代码表达
+• Action 两个工厂方法
+• Decider 返回下一个动作
+• run() 主循环约 60 行
+>>复杂度在治理,不在骨架
+#PAGE 应用:客服工单升级链
+• 查工单 → 查知识库 → 命中?答复
+• 未命中 → 升级人工
+• 全程状态机流转
+#PAGE 应用:竞品监控日报
+• 每日定时:抓取→比对→摘要
+• 异常变化→追加分析
+• 产物进邮件与看板
+#PAGE 踩坑:观察回灌顺序错乱
+• 并发工具结果乱序回灌
+• 模型因果判断错乱
+• 修复:结果携带调用序号
+#PAGE 优化:Loop 遥测指标
+• 每任务:轮数/工具次数/Token
+• 分布异常即告警
+• 与成本账本联动
+#PAGE 优化:断点续跑的幂等键
+• 步骤签名做幂等键
+• 恢复后跳过已完成步骤
+>>配合工具幂等设计
+#QUIZ 自测 · Agent Loop
+Q1 四个终止条件各自的适用场景?
+Q2 死循环签名为什么用序列化比对?
+Q3 假完成如何检测?
+Q4 循环预算怎么定?
+#SECTION 讲次 3-2 · Planning 与任务拆解
+#PAGE 并非所有任务都要 Planner
+• 两步内能完成的别上计划
+• Planner 本身消耗 Token 与延迟
+• 判断标准:步骤数与不确定性
+>>过度规划是常见反模式
+#PAGE 一次性计划
+• 开始时产出完整步骤清单
+• 适合:目标明确、步骤稳定
+• 例:数据导出报表类任务
+• 失败处理:整单重试或终止
+#PAGE 动态计划
+• 执行中信息不断变化
+• 每步后重估下一步
+• 适合:探索型/诊断型任务
+• 代价:Token 成本更高
+#PAGE Plan Revision
+• 执行发现计划错误 → 修订计划
+• 触发:工具结果与预期偏离
+• 修订要留痕:为什么改
+>>计划是文档,不是契约
+#PAGE 子目标拆解
+• 大目标 → 里程碑 → 步骤
+• 每个子目标可独立验证
+• 依赖关系显式声明
+>>拆解质量决定执行质量
+#PAGE 步骤依赖建模
+• 串行:前步输出是后步输入
+• 并行:独立步骤同时发
+• DAG 表达,拓扑执行
+>>Supervisor 的调度依据
+#PAGE 何时用固定 Workflow
+• 步骤 100% 确定:审批流/ETL
+• 合规要求每步可审计
+• 高频高频次:Workflow 更省钱
+>>能用 Workflow 就别上 Agent
+#PAGE 何时用 Agent Loop
+• 步骤依赖中间结果决定
+• 存在分支与异常路径
+• 任务多样性高
+>>灵活性换成本,想清楚再上
+#PAGE 计划与执行偏差处理
+• 工具失败:重试/换路/降级
+• 测试不过:回到计划修订
+• 上下文变化:触发重规划
+>>偏差处理逻辑要显式写
+#PAGE 应用:发版排障 SOP
+• SOP:看监控→查日志→定位→修复
+• Agent 化:每步映射工具
+• 分支:常见故障直接命中知识库
+>>从 SOP 到 Loop 的标准转换
+#PAGE 踩坑:计划幻觉
+• 模型编造不存在的步骤
+• 步骤引用不存在的工具
+• 防护:计划阶段就做工具存在性校验
+#PAGE 踩坑:计划过细变脆
+• 十步精确计划一步错全错
+• 修复:里程碑粒度计划
+• 执行层自由度交给 Loop
+#PAGE 优化:计划缓存
+• 相同任务类型复用计划骨架
+• 参数化差异部分
+• 命中后跳过规划阶段
+>>成本与延迟双降
+#PAGE 优化:分级 Planner
+• 简单任务:无 Planner
+• 中等:一次性计划
+• 复杂:动态+修订
+>>路由成本,别用大炮打蚊子
+#PAGE 优化:计划的可视化评审
+• 计划先给用户确认再执行
+• 高危任务默认人工过目
+• 确认记录进审计
+>>Human-in-the-loop 的第一站
+#PAGE 3-2 自测
+#QUIZ 自测 · Planning
+Q1 判断是否需要 Planner 的两个标准?
+Q2 Plan Revision 的触发时机?
+Q3 计划过细为什么反而脆弱?
+Q4 计划缓存的前提是什么?
+#SECTION 讲次 3-3 · State Machine 与 Checkpoint
+#PAGE 为什么 Agent 需要状态机
+• 长程任务横跨多次请求
+• 状态散落各处=不可恢复
+• 显式状态=可观测/可恢复/可审计
+#PAGE 任务九态全景
+• created → planning → running
+• waiting_tool / tool_failed
+• waiting_approval
+• completed / failed / cancelled
+>>平台 AgentState 枚举即此
+#PAGE 状态迁移规则
+• created→planning:拿到目标
+• planning→running:计划就绪
+• running→waiting_tool:发起调用
+• waiting_tool→running/tool_failed
+• 任何态→cancelled:用户取消
+#PAGE 步骤状态:细粒度记录
+• 当前步骤/工具名/输入参数
+• 工具输出/失败原因
+• 重试记录/下一步决策
+>>排查问题的第一手材料
+#PAGE Checkpoint:什么必须存
+• 任务状态+目标+run_id
+• 已执行步骤与观察历史
+• 计划(若有)与版本信息
+>>最小集原则:够恢复就行
+#PAGE Checkpoint 时机
+• 每轮循环结束即保存
+• 工具执行前后双保险
+• 状态迁移原子写入
+>>平台:深拷贝防共享可变状态
+#PAGE 中断恢复实战
+• kill 进程模拟崩溃
+• 重启后 resume_from 加载
+• 从最后观察点继续
+>>平台测试:test_checkpoint_resumes
+#PAGE 失败任务复现
+• 失败时保存完整现场
+• Replay:同输入重执行
+• 修复后验证行为变化
+>>第6章 ReplayStore 的雏形
+#PAGE 人工接管后续跑
+• waiting_approval 挂起
+• 人工批准/修改参数
+• 从确认点继续执行
+>>确认记录进审计
+#PAGE 应用:长任务控制台
+• 任务列表:状态/进度/耗时
+• 详情:步骤时间线
+• 操作:取消/接管/重试
+>>GraphQL 查询面的典型消费方
+#PAGE 踩坑:状态与缓存不一致
+• Redis 缓存状态,PG 是事实源
+• 缓存过期读旧态
+• 规则:写双清,读以 PG 兜底
+>>读写分离下读己之写回主库
+#PAGE 踩坑:Checkpoint 太大
+• 全量上下文每轮都存
+• 存储爆炸,恢复变慢
+• 优化:增量+摘要,大观察外置
+#PAGE 优化:状态机代码化
+• 迁移表驱动而非 if-else
+• 非法迁移直接抛错
+• 迁移全量留痕
+>>平台枚举+显式迁移
+#PAGE 优化:任务幂等重启
+• 恢复后重复步骤自动跳过
+• 步骤级幂等键
+• 配合工具幂等设计
+#PAGE 3-3 自测
+#QUIZ 自测 · 状态与检查点
+Q1 九态中哪三个是挂起态?
+Q2 Checkpoint 最小集包含什么?
+Q3 缓存与事实源不一致怎么防?
+Q4 为什么每轮都要落盘?
+#SECTION 讲次 3-4 · Sandbox 与执行边界
+#PAGE Agent 的权限悖论
+• 能力越强,破坏力越大
+• 文件/Shell/网络都是双刃剑
+• 没有边界的 Agent 不能上生产
+#PAGE 三类执行边界
+• 文件:可读/可写/禁止三区分离
+• Shell:白名单+超时+高危拦截
+• 网络:内网白名单/外网开关
+>>平台 LocalSandbox 三接口
+#PAGE 文件边界实现
+• realpath 归一化防 ../ 逃逸
+• allowed_roots 与 writable_roots 分离
+• 默认拒绝,显式授权
+>>读≠写,最小权限原则
+#PAGE Shell 边界实现
+• 命令头必须进白名单
+• 危险模式硬拦截:mkfs/rm变体/管道sh
+• sudo/dd/shutdown 直接禁用
+>>平台实测:rm -rf 被拦
+#PAGE 网络边界
+• 出网域名白名单
+• 内网服务按需授权
+• 第三方 API 走网关统一出
+>>禁止 Agent 自带任意 curl
+#PAGE 本地 Sandbox
+• 进程内模拟边界,教学友好
+• 适合:调试/轻量任务
+• 局限:共享内核,隔离不彻底
+#PAGE Docker Sandbox
+• 独立容器执行,隔离升级
+• 限制:无网/只读根/资源上限
+• 临时卷交换产出物
+• 生命周期:用完即毁
+#PAGE 本地 vs 容器边界差异
+• 文件:挂载点即边界
+• 网络:容器网络策略更硬
+• 权限:非 root 用户+drop caps
+• 环境变量:显式注入
+>>同一接口,两种实现
+#PAGE 工具审计与风险回放
+• 每条命令/文件操作全记录
+• 出事后按 run_id 回放现场
+• 危险动作复核制度
+>>审计是边界的最后兜底
+#PAGE 应用:Codebase Agent 的边界
+• 可读:整个仓库
+• 可写:仅 src/ 与 tests/
+• 禁止:.git/生产配置/密钥
+>>平台 Lab3 的标准配置
+#PAGE 应用:数据清洗任务的边界
+• 可写:临时工作目录
+• 网络:仅内网数据源
+• Shell:pandas/python 白名单
+>>按任务定制边界模板
+#PAGE 踩坑:路径逃逸
+• ../.. 绕过前缀检查
+• 符号链接指向外部
+• 修复:realpath+resolve 后再判
+>>平台实现已含此防护
+#PAGE 踩坑:白名单过宽
+• 允许 bash 等于没有白名单
+• 允许 python -c 等于任意代码
+• 原则:白名单到具体命令+参数模式
+#PAGE 优化:边界即配置
+• 边界模板按任务类型预设
+• 高危任务自动收紧
+• 边界变更留痕可审计
+#PAGE 优化:逃逸测试集
+• 攻击样例库:逃逸/提权/绕过
+• 每次边界改动全量回归
+>>把渗透测试思维引入教学
+#PAGE 3-4 自测
+#QUIZ 自测 · Sandbox
+Q1 为什么读和写要分两个根?
+Q2 realpath 防住了什么攻击?
+Q3 白名单过宽的典型例子?
+Q4 本地与容器沙箱怎么选?
+#SECTION 讲次 3-5 · Harness、LangGraph 与 Codebase Agent
+#PAGE Harness 是什么
+• 模型+工具+状态+上下文+环境的组织框架
+• 让 Agent 可配置/可追踪/可恢复
+• 从"一次调用"到"任务执行系统"
+>>平台 orchestration 就是 Harness
+#PAGE Harness 的装配五要素
+• 模型:Provider+Router
+• 工具集:Registry 动态装配
+• 状态:State+Checkpoint
+• 上下文:Context 管理器
+• 环境:Sandbox 边界
+>>五要素全部可配置替换
+#PAGE Agent 生命周期管理
+• 创建→运行→挂起→恢复→终结
+• 每个阶段有钩子
+• 资源随生命周期释放
+>>教学:构造即启动,Close 即清理
+#PAGE Human-in-the-loop 节点
+• 改文件/删数据/外部请求前
+• 挂起等待确认
+• 平台:waiting_approval+confirmed 凭据
+>>风险节点前置设计
+#PAGE LangGraph 核心对象
+• StateGraph:状态图
+• 节点=动作,边=流转
+• 条件边实现分支
+• Checkpointer 内置持久化
+#PAGE LangGraph 关键能力
+• Interrupt:图内人工介入
+• ToolNode:工具节点标准化
+• 循环与条件分支原生支持
+• Studio 可视化调试
+#PAGE 三框架定位对比
+• LangGraph:状态图编排,控制力强
+• OpenAI Agents SDK:轻量,生态绑定
+• AgentScope:多 Agent 消息范式
+>>选型:要控制力选 LangGraph
+#PAGE 与传统 Workflow 的关系
+• Workflow:确定性流程编排
+• LangGraph:状态+LLM 决策的混合
+• 固定流程仍用 Workflow
+>>Dify 用户:节点思维可平移
+#PAGE Codebase Agent 工具清单
+• list_files/read_file/read_directory
+• search_code/write_file/apply_patch
+• run_test/run_command
+• git_diff/git_status
+>>十件套覆盖开发日常
+#PAGE 任务一:代码理解
+• 需求:找出登录逻辑,输出 Markdown
+• 路径:search_code(auth)→read 相关文件
+• → 梳理调用链 → 生成文档
+• 产物:模块说明+文件路径引用
+>>Lab3 验收任务
+#PAGE 任务二:测试生成与修复
+• 定位函数 → 分析既有测试
+• → 编写新测试 → 执行
+• → 读失败日志 → 修正
+• → 输出变更说明
+>>典型的多轮纠错循环
+#PAGE 应用:从岗位任务拆能力
+• 开发岗:代码工具+项目记忆
+• QA 岗:测试工具+失败分析
+• 运维岗:Shell+监控+回滚
+>>能力包=第5章 Skill 的雏形
+#PAGE 踩坑:Harness 过度抽象
+• 为未来场景堆配置项
+• 结果:没人会用
+• 原则:三个真实场景驱动抽象
+#PAGE 踩坑:LangGraph 全流程依赖
+• 把业务逻辑全塞进图节点
+• 平台代码不可测
+• 建议:节点薄,领域逻辑在平台层
+#PAGE 优化:Harness 的测试策略
+• 五要素全部接口化
+• 测试注入 Mock 实现
+• 决策脚本化(平台 ScriptedDecider)
+>>确定性测试是平台根基
+#PAGE 本章小结
+• Loop:四出口+死循环熔断
+• Planning:按任务选策略
+• 状态机+Checkpoint:可恢复
+• Sandbox:三类边界最小权限
+>>下一章:认知能力扩展
+#PAGE Lab3 验收清单
+• [ ] 演示仓库完成代码理解任务
+• [ ] kill 后 resume_from 恢复
+• [ ] 危险命令被 Sandbox 拦截
+• [ ] 连续重复动作触发熔断
+• [ ] 九态流转全程留痕
+#PAGE 下一章预告
+• 上下文:Agent 的认知带宽
+• 记忆:短期/长期/项目级
+• RAG:让 Agent 查到该查的
+• 目标里程碑 M4:Codebase RAG&Memory
+>>决定上限的不是模型,是喂了什么

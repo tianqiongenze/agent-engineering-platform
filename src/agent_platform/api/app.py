@@ -21,18 +21,21 @@ from agent_platform.gateway import (
     ChatRequest,
     MockProvider,
     ModelRouter,
+    OpenAICompatibleProvider,
 )
 
 _LLM_PROVIDER = os.getenv("LLM_PROVIDER", "mock")
 
 
-def build_provider() -> MockProvider:
+def build_provider():
     """工厂:按环境变量装配 Provider(ADR-002)。
 
-    教学与 CI 默认 mock;openai_compatible 将在 M1 第 5 讲接入。
+    mock:CI/单测/离线开发;openai_compatible:真实 OpenAI 兼容端点(含本地 vLLM)。
     """
+    if _LLM_PROVIDER == "openai_compatible":
+        return OpenAICompatibleProvider.from_env()
     if _LLM_PROVIDER != "mock":
-        raise NotImplementedError("openai_compatible provider 在 spec-phase1 AC6 接入")
+        raise ValueError(f"unsupported LLM_PROVIDER: {_LLM_PROVIDER}")
     return MockProvider(scripts={"hello": "world, from Agent Engineering Platform"})
 
 

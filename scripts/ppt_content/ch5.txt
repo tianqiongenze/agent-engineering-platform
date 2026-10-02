@@ -1,0 +1,436 @@
+#META 5|Multi-Agent、Skill 与 Agent Eval|协作架构与质量护城河 · 里程碑 M5
+#TOC
+讲次 5-1 · Multi-Agent 模式与边界
+讲次 5-2 · Subagent 任务委托与聚合
+讲次 5-3 · Skill 系统
+讲次 5-4 · Agent Eval:核心护城河
+讲次 5-5 · Trace Analysis 与平台集成
+本章小结
+Lab5 验收清单
+下一章预告
+#SECTION 讲次 5-1 · Multi-Agent 模式与边界
+#PAGE 先问要不要 Multi-Agent
+• 不是所有任务都需要团队作战
+• 单 Agent 能做就别上多 Agent
+• 每多一个 Agent 多一份成本与风险
+>>复杂度是成本,不是勋章
+#PAGE 单 Agent 适用场景
+• 目标明确、步骤较短
+• 上下文集中,工具链简单
+• 例:单文件修复/单问题问答
+>>多数日常任务是单 Agent
+#PAGE Multi-Agent 适用场景
+• 多视角:代码审查/研究分析
+• 大规模:安全扫描/性能诊断
+• 报告生成:多源信息聚合
+>>一个窗口装不下的任务
+#PAGE Supervisor 模式
+• 主控:拆解/调度/收集/决策
+• 工人:只管自己的子任务
+• 类比:技术经理与团队
+>>平台 SupervisorAgent 已实现
+#PAGE Planner/Executor 模式
+• Planner 出计划,Executor 干活
+• 适合长程任务解耦
+• 计划修订回流 Planner
+>>第3章 Planning 的多体化
+#PAGE Reviewer 模式
+• 独立审查 Agent 复核结果
+• 降幻觉/降遗漏/降错误结论
+• 成本:多一次调用
+>>高危任务必配
+#PAGE 并行与串行执行
+• 独立子任务并行 gather
+• 有依赖按拓扑串行
+• 平台:asyncio.gather+超时隔离
+>>延迟数量级改善
+#PAGE 隔离机制三件套
+• 上下文隔离:各自窗口,防互相污染
+• 工具隔离:按需分配工具集
+• 权限隔离:默认只读
+>>防止一个 Agent 学坏带坏全场
+#PAGE 成本与超时控制
+• 每个 Subagent 设:最大时长
+• 最大调用次数与 Token 预算
+• 超限熔断,不影响全局
+>>平台 min(task.timeout, supervisor.timeout)
+#PAGE 冲突处理策略
+• 结论不一致 → 主 Agent 仲裁
+• 依据:证据数量/来源可信度
+• 平局或高风险 → 人工确认
+>>平台按证据数仲裁可复现
+#PAGE 应用:可维护性分析
+• 架构/测试/安全/性能四视角并行
+• Report Agent 合并去重
+• 输出重构建议清单
+>>Lab5 主任务
+#PAGE 应用:安全扫描流水线
+• 扫描器工具+审查 Agent
+• 误报复核角色
+• 输出带证据的漏洞报告
+#PAGE 踩坑:多 Agent 互相污染
+• 共享可变全局状态
+• 一个改错全场崩
+• 治理:不可变传递+显式聚合
+>>第2章 spec 污染事故同源
+#PAGE 踩坑:子任务范围失控
+• 子 Agent 自行扩大任务边界
+• 修复:goal 精确+allowed_tools 收紧
+• 超范围调用直接被权限拦截
+#PAGE 优化:Worker 池复用
+• 常驻 Worker 处理同类任务
+• 减少冷启动
+• 池化监控与弹性
+#PAGE 优化:分层预算
+• 全局预算 → 子任务配额
+• 超支自动收敛
+>>防止单任务吃光团队预算
+#PAGE 5-1 自测
+#PAGE Supervisor 的仲裁实现
+• conflicts:Conflict(field_name=aspect)
+• 裁决:max(证据数, worker 名)
+• arbitrated_verdict 进报告
+>>单测覆盖冲突与平局
+#PAGE Worker 实装要点
+• 六角色=六个 Worker 类
+• run() 内部只做本视角分析
+• evidence 必须带文件/数据来源
+>>Lab5 的开发任务
+#QUIZ 自测 · Multi-Agent 模式
+Q1 三个协作模式各自的适用条件?
+Q2 隔离三件套防什么?
+Q3 冲突仲裁为什么按证据数?
+Q4 什么时候必须人工仲裁?
+#SECTION 讲次 5-2 · Subagent 任务委托与聚合
+#PAGE 委托八要素总览
+• 任务目标/输入上下文/可调用工具
+• 权限边界/预期输出/输出格式
+• 超时限制/评价标准
+>>缺一项就是糊涂账
+#PAGE 要素详解:目标与上下文
+• 目标:解决什么问题,一句话
+• 上下文:能看到哪些代码/文档
+• 上下文给多给少都影响质量
+>>平台 SubagentTask.goal/aspect
+#PAGE 要素详解:工具与权限
+• allowed_tools:白名单式分配
+• permission:默认只读
+• 写操作必须单独授权
+>>平台 permission 字段已落地
+#PAGE 要素详解:输出与格式
+• 预期输出:结论/证据/风险等级
+• 输出格式:JSON/Markdown 统一
+• 便于主 Agent 程序化聚合
+>>格式不统一=聚合地狱
+#PAGE 要素详解:超时与评价
+• 超时:防无限执行烧成本
+• 评价标准:什么算完成/高质量
+• 评价标准进 Skill 质量栏
+#PAGE Result Aggregation:合并
+• 各 Agent 发现统一整理
+• 证据合并且引用保留
+• 去重:相同问题合并来源
+#PAGE Result Aggregation:排序与汇总
+• 按严重度/影响面/优先级排序
+• 分散信息 → 可执行建议
+• 主 Agent 复核:漏目标?无证据?
+>>复核是聚合的最后一关
+#PAGE 冲突识别与仲裁
+• 同一判断面(aspect)结论不一致
+• 平台:aspect 字段显式声明
+• 仲裁:证据数量多者胜
+>>不同 aspect 差异不算冲突
+#PAGE 应用:跨仓库影响分析
+• 每仓库一个 Worker 平行扫
+• 聚合:变更清单+风险分级
+• 冲突:两仓结论矛盾→仲裁
+#PAGE 应用:报告工厂
+• 资料组/数据组/写作组
+• 各自产出结构化片段
+• Report Agent 组装终稿
+#PAGE 踩坑:格式漂移
+• Worker 返回字段名各不相同
+• 聚合代码 if-else 满天飞
+• 治理:输出 Schema 强约束
+>>平台 WorkerResult 统一结构
+#PAGE 踩坑:超时 Worker 的僵尸结果
+• 超时后部分结果到达
+• 聚合误用半成品
+• 平台:超时统一 error 标记
+>>宁可缺,不可错
+#PAGE 优化:委托模板化
+• 常见子任务做成委托模板
+• 八要素预填七项
+>>第5章 Skill 的近亲
+#PAGE 优化:证据链标准化
+• evidence 统一:来源+位置+摘要
+• 聚合后全程可溯源
+>>与 RAG Citation 同一哲学
+#PAGE 5-2 自测
+#QUIZ 自测 · 委托与聚合
+Q1 八要素里最容易被忽略的两项?
+Q2 为什么默认只读?
+Q3 aspect 字段解决什么问题?
+Q4 超时 Worker 的结果怎么处理?
+#SECTION 讲次 5-3 · Skill 系统
+#PAGE Skill 是什么
+• 某类任务的执行方法封装
+• 输入输出规范+工具依赖
+• Prompt 模板+质量标准
+>>能力包:可复用/可审查/可版本化
+#PAGE Skill 与 Tool 的区别
+• Tool:一个原子动作
+• Skill:一套方法论的编排
+• Skill 依赖多个 Tool
+>>Function 是字,Skill 是文章
+#PAGE Skill 生命周期
+• 注册 → 检索 → 匹配 → 执行
+• → 评估 → 版本管理 → 下线/复用
+>>平台 SkillRegistry 覆盖主干
+#PAGE Skill 注册
+• 名称/适用场景/输入参数
+• 输出格式/依赖工具
+• 权限边界/评价标准
+>>平台 SkillDef 五字段
+#PAGE Skill 检索与匹配
+• 按任务描述+上下文+历史经验
+• 平台:2-gram 场景重叠匹配
+• 阈值 2 过滤噪声
+>>更智能可换向量匹配
+#PAGE Skill 编排
+• 顺序/并行/条件分支
+• 人工确认节点
+• 失败恢复路径
+>>编排结果=微型工作流
+#PAGE Skill 版本管理
+• 版本必须递增(平台强制)
+• 变更记录+评估数据
+• 灰度:新旧版本按流量
+>>倒退版本直接 ValueError
+#PAGE Skill 复用的价值
+• 跨 Agent/跨场景/跨项目
+• 减少重复 Prompt 与流程设计
+>>一次沉淀,处处受益
+#PAGE 应用:竞品分析 Skill
+• 步骤:搜集/交叉验证/分析/成文
+• 质量:每个结论两条独立来源
+>>Capstone A 直接使用
+#PAGE 应用:事故复盘 Skill
+• 步骤:时间线/根因/改进项
+• 输出:复盘报告模板
+>>经验方法论的标准化
+#PAGE 踩坑:Skill 大而全
+• 一个 Skill 想覆盖所有场景
+• 匹配失准,执行僵硬
+• 治理:按场景细拆
+#PAGE 踩坑:版本升级无评估
+• 拍脑袋升版本
+• 旧场景退化无人知
+• 规则:升级必须过回归
+>>与 Prompt 版本管理同理
+#PAGE 优化:Skill 市场
+• 团队内共享 Skill 目录
+• 使用量/评分/评估数据展示
+>>组织级能力复利
+#PAGE 优化:Skill 的自动提炼
+• 成功任务序列 → 候选 Skill
+• 人工审核后入库
+>>从实践中来,到实践中去
+#PAGE 5-3 自测
+#QUIZ 自测 · Skill
+Q1 Skill 与 Tool 的边界?
+Q2 版本为什么必须递增?
+Q3 匹配失准的常见原因?
+Q4 如何让 Skill 越用越准?
+#SECTION 讲次 5-4 · Agent Eval:核心护城河
+#PAGE 为什么需要 Eval
+• 能运行 ≠ 可靠
+• Demo 成功 ≠ 真实任务成功
+• 改 Prompt 可能旧任务退化
+• 换模型可能工具行为漂移
+>>没有数据,变好只是感觉
+#PAGE Eval 的商业含义
+• 迭代方向靠数据定
+• 回归拦住退化
+• 对外可证明质量
+>>护城河=数据+迭代速度
+#PAGE Golden Dataset
+• 标准任务集:输入+期望
+• 覆盖:代码理解/修改/检索/长程
+• 平台:GoldenCase 三字段
+>>起步 20 条,持续扩充
+#PAGE 指标:任务与工具
+• Task Success Rate:完成率
+• Tool Call Accuracy:选对工具吗
+• Tool Parameter Accuracy:参数对吗
+>>北极星是成功率
+#PAGE 指标:质量与可信
+• Answer Correctness:答案对吗
+• Citation Accuracy:引用支持结论吗
+• Hallucination Rate:幻觉率
+• Retrieval Recall:召回够吗
+#PAGE 指标:效率与恢复
+• Latency / Token Cost / Tool Call Count
+• Failure Recovery Rate:失败自愈率
+• Human Handoff Rate:转人工率
+• Regression Test:回归
+>>成本指标与质量指标并重
+#PAGE 方法:规则与快照
+• Rule-based:关键词/正则/数值断言
+• Schema-based:结构合法性
+• Snapshot:输出快照比对
+>>确定、便宜、可进 CI
+#PAGE 方法:Golden Answer
+• 人工标注标准答案
+• 精确或语义匹配
+• 适合稳定的高频任务
+#PAGE 方法:LLM-as-Judge
+• 用强模型当裁判
+• 适用:开放式答案评分
+• 不可靠:顺序偏置/自我偏好
+>>重要结论配人工抽检
+#PAGE 方法:人工与成对比较
+• Human Eval:标注规范+抽检
+• Pairwise:A/B 两版对比胜率
+• 上线前的最终关卡
+#PAGE 回归测试与 A/B
+• 新版本跑全量 Golden Set
+• improved/regressed 双清单
+• A/B:线上按流量对比指标
+>>平台 EvalRunner.regression 已实现
+#PAGE 应用:代码修复回归集
+• 10 个有 bug 的函数+期望修复
+• 每次改动跑一遍
+• 修复率即核心指标
+#PAGE 应用:RAG 问答评测
+• 30 问+标准答案+期望来源
+• 正确率+引用准确率双指标
+>>与第4章四指标联动
+#PAGE 踩坑:评测集泄漏进 Prompt
+• Few-shot 用了评测样例
+• 指标虚高,上线即跌
+• 治理:评测集隔离管理
+#PAGE 踩坑:Judge 模型的偏置
+• 偏好长答案/自己家的风格
+• 缓解:双 Judge+随机顺序
+• 定期人工校准
+#PAGE 优化:评测即 CI
+• PR 触发核心评测集
+• 指标不达标阻断合并
+>>质量门禁的最终形态
+#PAGE 5-4 自测
+#PAGE Eval 指标的采集成本
+• 自动指标:零人工,随跑随出
+• Judge:一次额外调用
+• 人工:最贵,只用于抽检
+>>按指标重要性分配采集方式
+#PAGE EvalRunner 数据结构
+• GoldenCase → AgentAnswer → CaseVerdict
+• EvalReport:成功率+工具准确率
+• RegressionDelta:improved/regressed
+>>数据结构即评测契约
+#QUIZ 自测 · Eval
+Q1 六类指标各举一例?
+Q2 LLM-as-Judge 什么时候不可信?
+Q3 评测集为什么要隔离?
+Q4 回归双清单怎么读?
+#SECTION 讲次 5-5 · Trace Analysis 与平台集成
+#PAGE 失败诊断的起点:Trace
+• 问题:Agent 为什么答错了
+• 答案藏在执行轨迹里
+• 逐段回放:计划/检索/工具/推理
+#PAGE 归因①:Prompt 问题
+• 指令不清晰/约束冲突
+• 输出格式不稳定
+• 处方:改模板+回归验证
+#PAGE 归因②:上下文问题
+• 关键信息缺失/无关信息过多
+• 上下文污染
+• 处方:调整装配策略与预算
+#PAGE 归因③:检索问题
+• 召回不到/排序错/来源不可靠
+• 处方:分块/检索词/Rerank 调优
+>>第4章四指标定位
+#PAGE 归因④:工具与执行问题
+• 选错工具/参数错误/权限拦截
+• 超时/外部服务不可用
+• 死循环/子 Agent 委托错误
+• 处方:工具治理+Runtime 加固
+#PAGE 归因⑤:模型能力与幻觉
+• 推理/长上下文能力不足
+• 结论无证据支撑/引用不准
+• 处方:换模型/加约束/加审查
+#PAGE 归因⑥:评测自身误判
+• 规则太严/Judge 偏置
+• 别急着改 Agent,先验评测
+>>UIM 教训:先验证再动手
+#PAGE 失败样本聚类
+• 按归因维度聚类统计
+• Top3 失败模式优先修复
+>>修复 ROI 排序依据
+#PAGE 六角色协作分析任务
+• Supervisor 拆解调度
+• Architecture/Test/Security/Performance
+• Documentation+Report 汇总
+>>平台六个 Worker 可直接实装
+#PAGE Eval 平台能力清单
+• Benchmark 管理/批量运行
+• Prompt/Model/RAG 策略对比
+• Trace 记录+Judge+人工
+• 成功率/成本/耗时统计
+• 失败聚类+回归报告
+>>平台已具备核心件
+#PAGE 应用:一次真实的迭代
+• 现象:修复率 70%
+• Trace:20% 失败在"读错文件"
+• 修复:检索+引用强化
+• 复测:85%,回归无退化
+>>数据闭环全流程
+#PAGE 踩坑:只看成功率
+• 95% 但成本翻倍
+• 指标要一起看
+>>多指标联合决策
+#PAGE 踩坑:过拟合评测集
+• 反复针对 20 题调优
+• 真实任务反而变差
+• 治理:保留隐藏评测集
+#PAGE 优化:失败注入测试
+• 主动制造工具故障
+• 验证恢复率与降级路径
+>>DPC 契约测试思想
+#PAGE Trace Analysis 的操作流
+• 定位失败 case → 打开 Trace
+• 逐 span 检查:哪步开始偏离
+• 归因打标 → 进聚类库
+>>失败样本是迭代路线图
+#PAGE 从修复到防复发
+• 每个失败样本 → 一条回归用例
+• 修复同时扩充 Golden Set
+>>评测集随故障增长
+#PAGE 归因速查表
+• 六大类失败 → 对应处方一页纸
+• 贴在工位,排查先对表
+>>课堂演练:三次真实 case
+#PAGE 本章小结
+• 协作:三模式+隔离+仲裁
+• 委托:八要素+聚合复核
+• Skill:方法论资产化
+• Eval:数据驱动的护城河
+>>下一章:上生产
+#PAGE 数据驱动的迭代文化
+• 每次变更:先跑回归再合并
+• 每次故障:先归因再修复
+• 每个季度:评测集大盘点
+>>护城河是习惯,不是工具
+#PAGE Lab5 验收清单
+• [ ] 六角色产出可维护性报告
+• [ ] Golden Set ≥20 题
+• [ ] 一次 Prompt 改动回归对比
+• [ ] 失败样本聚类分析
+• [ ] 冲突仲裁案例演示
+#PAGE 下一章预告
+• 部署形态与推理服务
+• 缓存体系与成本治理
+• 可观测性:Trace/Replay/告警
+• 目标里程碑 M6:Production Ready
+>>从能跑到敢上
