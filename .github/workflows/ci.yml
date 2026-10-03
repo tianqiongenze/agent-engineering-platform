@@ -17,7 +17,7 @@ jobs:
         run: uv sync
       - name: Lint
         run: |
-          uv run ruff check src tests
+          uv run ruff check src tests examples scripts
           uv run ruff format --check src tests
       - name: Typecheck
         run: uv run mypy src

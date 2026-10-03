@@ -96,6 +96,7 @@ Lab5 验收清单
 • run() 内部只做本视角分析
 • evidence 必须带文件/数据来源
 >>Lab5 的开发任务
+#CODE Supervisor:并行+超时隔离+仲裁|src/agent_platform/multi_agent/supervisor.py:84-110
 #QUIZ 自测 · Multi-Agent 模式
 Q1 三个协作模式各自的适用条件?
 Q2 隔离三件套防什么?
@@ -329,6 +330,7 @@ Q4 如何让 Skill 越用越准?
 • EvalReport:成功率+工具准确率
 • RegressionDelta:improved/regressed
 >>数据结构即评测契约
+#CODE 回归双清单|src/agent_platform/eval/evaluator.py:116-121
 #QUIZ 自测 · Eval
 Q1 六类指标各举一例?
 Q2 LLM-as-Judge 什么时候不可信?

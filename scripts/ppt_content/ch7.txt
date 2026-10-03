@@ -136,6 +136,7 @@ Capstone 指引
 • 示例:加"成本护栏"中间件
 • 五步:设计→实现→测试→ADR→文档
 >>本课程方法论的真实演练
+#CODE 多协议网关:anthropic-messages 适配|src/agent_platform/gateway/anthropic_provider.py:53-83
 #QUIZ 自测 · DeerFlow
 Q1 九条线各对应本平台哪个组件?
 Q2 为什么"注册了不代表能用"?
@@ -426,6 +427,7 @@ Q3 全自动化的边界在哪里?
 • 给 DeerFlow 提 PR
 • 输出实践文章反哺社区
 >>作品集的放大器
+#CODE 两级缓存:命中率可观测|src/agent_platform/shared/cache.py:88-116
 #QUIZ 自测 · 产品化
 Q1 五种形态的判断顺序?
 Q2 你的项目该砍掉哪层自主性?

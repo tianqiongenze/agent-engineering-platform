@@ -105,6 +105,7 @@ Lab4 验收清单
 • 压缩率与任务成功率相关性
 • 数据驱动调配额
 #PAGE 4-1 自测
+#CODE 历史压缩:保头尾折中段|src/agent_platform/context_memory/context.py:10-19
 #QUIZ 自测 · Context Engineering
 Q1 三重约束分别限制什么?
 Q2 哪些内容永远不进窗口?
@@ -340,6 +341,7 @@ Q4 记忆污染如何治理?
 • RRF:1/(K+rank) 融合,K=60
 • via 字段标注命中通道
 >>平台 HybridRetriever 单测可查
+#CODE RRF 双通道融合|src/agent_platform/context_memory/rag.py:106-125
 #QUIZ 自测 · RAG
 Q1 代码语料为什么必须 AST 分块?
 Q2 Hybrid 为什么优于单一向量?

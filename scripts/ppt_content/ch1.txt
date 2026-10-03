@@ -142,6 +142,7 @@ Lab1 验收清单
 • 影响:被扫描机器人抓取盗刷
 • 处置:立即轮转+历史清除
 • 预防:pre-commit 扫描 sk- 模式
+#CODE 域模型不变量:TDD 守护|src/agent_platform/gateway/domain.py:24-58
 #QUIZ 自测 · LLM API 基础
 Q1 finish_reason=length 说明什么?
 Q2 哪些错误值得重试,哪些不值得?
@@ -244,6 +245,7 @@ Q4 你的项目里哪个参数最该进配置中心?
 • 差异过大时触发仲裁
 • 成本翻倍,仅关键路径使用
 >>对冲是尾延迟优化手段
+#CODE SSE 逐块转发(平台实测打字机)|src/agent_platform/api/app.py:150-172
 #QUIZ 自测 · Streaming
 Q1 SSE 与 WebSocket 选型依据?
 Q2 流式中途限流,已生成内容怎么处理?

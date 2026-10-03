@@ -12,7 +12,7 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 import strawberry
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -22,6 +22,12 @@ from agent_platform.gateway import (
     MockProvider,
     ModelRouter,
     OpenAICompatibleProvider,
+)
+from agent_platform.security import (
+    InjectionDetected,
+    RateLimitExceeded,
+    ReplayDetected,
+    SecurityStack,
 )
 
 _LLM_PROVIDER = os.getenv("LLM_PROVIDER", "mock")
@@ -76,7 +82,12 @@ class ChatCompletionBody(BaseModel):
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="Agent Engineering Platform", version="0.1.0")
+    app = FastAPI(title="Agent Engineering Platform", version="0.2.0")
+    limiter = SecurityStack.limiter_factory(
+        capacity=int(os.getenv("SEC_RATE_CAPACITY", "10")),
+        refill_per_s=float(os.getenv("SEC_RATE_REFILL", "2")),
+    )
+    security = SecurityStack(limiter=limiter)
     provider = build_provider()
     router = ModelRouter(chain=["primary", "fast"], provider=provider)
 
@@ -89,7 +100,16 @@ def create_app() -> FastAPI:
         return {"status": "ok", "llm_provider": _LLM_PROVIDER}
 
     @app.post("/v1/chat/completions")
-    async def chat_completions(body: ChatCompletionBody) -> StreamingResponse:
+    async def chat_completions(body: ChatCompletionBody, request: Request) -> StreamingResponse:
+        client_key = request.client.host if request.client else "anonymous"
+        idem = request.headers.get("x-idempotency-key", "")
+        prompt_text = "\n".join(m.content for m in body.messages)
+        try:
+            security.check_request(client_key=client_key, text=prompt_text, idempotency_key=idem)
+        except (RateLimitExceeded, ReplayDetected) as exc:
+            raise HTTPException(status_code=429, detail=str(exc)) from exc
+        except InjectionDetected as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         req = ChatRequest(model=body.model, messages=body.messages)
 
         async def sse() -> AsyncIterator[bytes]:

@@ -120,6 +120,7 @@ Lab3 验收清单
 • 步骤签名做幂等键
 • 恢复后跳过已完成步骤
 >>配合工具幂等设计
+#CODE 主循环:四出口+死循环熔断|src/agent_platform/orchestration/loop.py:150-196
 #QUIZ 自测 · Agent Loop
 Q1 四个终止条件各自的适用场景?
 Q2 死循环签名为什么用序列化比对?
@@ -354,6 +355,7 @@ Q4 为什么每轮都要落盘?
 • 每次边界改动全量回归
 >>把渗透测试思维引入教学
 #PAGE 3-4 自测
+#CODE 命令白名单+危险模式硬拦截|src/agent_platform/orchestration/sandbox.py:17-44
 #QUIZ 自测 · Sandbox
 Q1 为什么读和写要分两个根?
 Q2 realpath 防住了什么攻击?

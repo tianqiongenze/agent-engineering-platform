@@ -88,6 +88,7 @@ Lab2 验收清单
 • 类型注解即文档
 >>代码:tools/runtime.py
 #PAGE 2-1 自测
+#CODE @tool 装饰器:签名即 Schema|src/agent_platform/tools/runtime.py:78-108
 #QUIZ 自测 · Function Calling
 Q1 为什么模型永远不直接执行工具?
 Q2 工具描述里最影响选择准确率的是什么?
@@ -285,6 +286,7 @@ Q4 你如何验证工具描述改好了?
 • 变更走 PR 评审
 • CI 校验角色-风险覆盖关系
 #PAGE 2-3 自测
+#CODE 执行管线:权限→校验→超时→审计|src/agent_platform/tools/runtime.py:200-232
 #QUIZ 自测 · 治理与安全
 Q1 四道防线各拦住什么?
 Q2 为什么 DANGEROUS 需要确认凭据?

@@ -29,11 +29,8 @@ class OpenAICompatibleProvider:
         client: httpx.AsyncClient | None = None,
     ) -> None:
         self.model = model
-        self._client = client or httpx.AsyncClient(
-            base_url=base_url,
-            timeout=timeout_s,
-            headers={"Authorization": f"Bearer {api_key}"},
-        )
+        self._client = client or httpx.AsyncClient(base_url=base_url, timeout=timeout_s)
+        self._client.headers.update({"Authorization": f"Bearer {api_key}"})
         self.call_count = 0
 
     @classmethod
