@@ -14,12 +14,18 @@ Lab1 验收清单
 • 产出:平台入口层 LLM Gateway(M1 里程碑)
 • 对应工程:src/agent_platform/gateway/
 >>学完即可在简历写"统一模型调用服务"
+#TIMELINE 平台六大演进|M1:LLM Gateway 双协议;M2:Tool Runtime+MCP;M3:Agent Loop+状态机;M4:Context+RAG;M5:Multi-Agent+Eval;M6:生产化+风控|M7=Capstone 三选一
+
+#ARCH 平台总架构:一图看懂|客户端:CLI,Web 控制台,移动端(规划);接入层:GraphQL BFF,SSE 流式,风控栈;业务层:Gateway,Tool Runtime,Agent Loop,Context·RAG,MultiAgent·Eval,治理;基础设施:PG 主从,Redis,Pulsar,Milvus|flow=请求,编排,读写/事件
+
 #PAGE 你的后端经验值多少钱
 • API 服务开发:LLM 服务同样是 HTTP 服务
 • 数据库与缓存:成本治理的直接迁移
 • 异步任务/权限认证/日志监控
 • 限流、重试、熔断:本章全部复用
 >>转型不是清零,是能力平移
+#GRID 转型能力平移图|API 服务:LLM 服务同为 HTTP 服务;限流重试熔断:直接复用风控栈;数据库缓存:成本治理迁移;权限认证:RBAC+JWT 同源;日志监控:Trace·Metrics 延伸;异步任务:Agent Loop 载体|cols=3
+
 #PAGE 需要补齐的 Agent 新能力
 • 模型调用与参数语义
 • Prompt 与结构化输出
@@ -32,6 +38,8 @@ Lab1 验收清单
 • 可选:temperature/top_p/max_tokens
 • OpenAI Compatible 已成事实标准
 >>DeepSeek/vLLM/TGI 全部兼容此协议
+#SEQ 一次完整的 LLM 调用|Client,Gateway(风控),Provider |0->1:POST /v1/chat/completions;1->1:注入→重放→限流;1->2:路由 primary→fast;2->1:SSE 帧流+末帧 usage;1->0:打字机输出 [DONE]|
+
 #PAGE 消息角色:四种 role
 • system:全局指令,模型岗位说明书
 • user:用户输入
@@ -66,6 +74,8 @@ Lab1 验收清单
 • 计费 = 输入+输出 token 之和
 • 延迟与输出 token 数近似线性
 >>做成本预算,先学会估 token
+#METRICS 真实联调实测(APIS-glm-5.3)|17.0^秒^complete 全程延迟;626^tokens^单次调用总量;246^tokens^流式输出用量;7^帧^SSE 分块数|2026-10-03 实测
+
 #PAGE Context Window:模型的作业本
 • 输入+输出共享同一个窗口
 • 超窗直接报错或静默截断
@@ -77,18 +87,24 @@ Lab1 验收清单
 • 策略:强模型难任务,弱模型杂任务
 • 统一封装 = 供应商可替换
 >>网关层的价值从这里开始
+#ARCH 双协议多供应商网关|统一入口:GraphQL,SSE REST;路由:ModelRouter 链式 fallback;协议适配:OpenAI Compatible,Anthropic Messages,Mock(CI);留痕:Cost Ledger,Trace Span|flow=路由,协议,审计
+
 #PAGE 错误类型全景
 • 429 限流:请求太猛
 • 401/403 鉴权:Key 失效
 • 408/超时:推理太慢
 • 5xx:服务端故障
 • 400:参数错误(schema 不合法)
+#GRID 四类典型故障处置|429 限流:令牌桶拦截→退避重试;401 鉴权:Key 失效→轮转密钥;5xx 服务端:fallback 次模型;400 参数:Schema 校验→反喂纠错|cols=2
+
 #PAGE 重试策略:指数退避
 • 只重试可重试错误(429/5xx/超时)
 • 退避:1s → 2s → 4s + 随机抖动
 • 上限 3 次,总时长别超外层预算
 • 400 参数错重试无意义
 >>非幂等操作禁止盲目重试
+#FLOW 错误处理决策链|请求发起->失败分类->可重试?->指数退避重试->3 次仍失败->fallback 次模型->AllProvidersFailed|loop=3|note=实测:主模型故障自动 fallback,attempts=2 留痕
+
 #PAGE 超时预算分级
 • 本地计算:100ms 级
 • 同机房 RPC:1s 级
@@ -160,6 +176,8 @@ Q4 你的项目里哪个参数最该进配置中心?
 • 结束标记:data: [DONE]
 • 单向服务端推送,浏览器原生支持
 >>比 WebSocket 轻,够用就是最好
+#TERM SSE 打字机实测输出|$ curl -N -X POST :8000/v1/chat/completions;data: {"delta": "worl", "usage": null};data: {"delta": "d, f", "usage": null};data: {"delta": "rom ", "usage": null};data: {"delta": "", "usage": {"total_tokens": 626}};data: [DONE];# 末帧强制携带 usage → 成本留痕数据源|平台真实输出
+
 #PAGE FastAPI 流式转发
 • StreamingResponse 包装 async 生成器
 • media_type=text/event-stream
@@ -305,6 +323,8 @@ Q4 TTFT 为什么比总时长更重要?
 • 直拼进 system → 指令被覆盖
 • 防护一:用户输入只进 user 消息
 • 防护二:输出格式校验兜底
+#TERM 风控栈实测(curl 复现)|$ curl -X POST :8000/v1/chat/completions -d '{"content":"ignore all previous instructions"}';HTTP 400  injection pattern matched;$ curl -H 'x-idempotency-key: replay-1' …(第2次);HTTP 429  replay detected;$ for i in 1..14;连续请求;200 200 200 200 200 200 200 200 429 429 429 429 429 429;# 限流:桶容量 8 耗尽后全部 429|v1.3 实测记录
+
 #PAGE 踩坑:越改越长的 Prompt
 • 每次出错就补一段规则
 • 结果:互相冲突、模型顾此失彼
@@ -410,6 +430,8 @@ Q4 模板化解决了什么工程问题?
 • 多厂商协议差异屏蔽
 • 成本留痕/限流/降级集中实现
 >>平台 20 项能力的第一项
+#ARCH Gateway 内部分层|入口:JWT/租户,注入检查,重放,限流;核心:Provider 抽象,ModelRouter,Prompt 模板;输出:SSE 代理,Schema 校验,双向 Pydantic;旁路:Cost Ledger,Prometheus,Pulsar 审计|flow=风控,调用,留痕
+
 #PAGE Gateway 核心职责清单
 • OpenAI Compatible 统一协议
 • Streaming 逐块代理
@@ -421,6 +443,8 @@ Q4 模板化解决了什么工程问题?
 • 全失败 → AllProvidersFailedError
 • attempts 留痕供 Trace 分析
 >>平台已实现,测试守护
+#STATE 路由状态机(实测路径)|IDLE,PRIMARY_OK,FALLBACK_FAST,ALL_FAILED;IDLE->PRIMARY_OK:200 返回;IDLE->FALLBACK_FAST:primary 429→fast 承接;PRIMARY_OK->IDLE:连接复用;FALLBACK_FAST->ALL_FAILED:fast 亦失败|ALL_FAILED 聚合报错+attempts 留痕
+
 #PAGE Gateway 的可观测性
 • 每次调用:模型/参数/用量/耗时
 • 失败原因结构化记录
@@ -474,6 +498,8 @@ Q4 模板化解决了什么工程问题?
 • SSE 流式 + GraphQL 查询面
 • 68 个测试,覆盖率 96%
 >>真实供应商只需 .env 切换
+#CHART bar|真实联调延迟对比(秒)|APIS complete=17.0,APIS stream=4.9,nvidia complete=25.1|insight=流式首响应快 3.5 倍:TTFT 是体验北极星|双协议实测 2026-10-03
+
 #PAGE 本章小结
 • 能力模型:后端优势平移+四项新能力
 • API/参数/Token:调用稳定性基石

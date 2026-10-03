@@ -13,6 +13,10 @@ Lab6 验收清单
 • 私有化:数据可控,成本自担
 • 混合:敏感在内网,通用走云
 >>决策变量:能力/敏感/成本/延迟/合规
+#ARCH 读写分离路由|写路径:write_session(主库),Outbox 同事务;读路径:从库(报表/Trace),锚定期回主库;一致性:读己之写 TTL 5s,从库追平≤30s;治理:路由计数留痕|flow=写主库,锚定,回从库|真实 PG16 流复制实测
+
+#ARCH 生产部署拓扑|边缘:Nginx WAF(限流/拦截/444),CDN;接入:API×N(无状态多副本),JWT/租户;数据:PG 主从(读写分离),Redis,Pulsar;检索:Milvus(向量+BM25)|flow=防护,路由,读写分离|Compose 已验证同构拓扑
+
 #PAGE 云 API 的适用边界
 • 非敏感数据/快速验证/突发弹性
 • 风险:供应商锁定/限流/价格变动
@@ -122,6 +126,8 @@ Q4 容量规划看哪四个指标?
 • Embedding Cache:向量复算
 • RAG Cache / Tool Result Cache
 >>平台规划为四级缓存
+#PYRAMID 四级缓存体系|L3 语义缓存:向量相似 τ=0.92(42.2%);L2 Redis:跨进程共享(TTL 分级);L1 进程内 LRU:纳秒级(容量按热点)|Tool Result Cache:幂等读 60s|层级自底向上加速
+
 #PAGE Prompt Cache
 • 相同前缀命中推理侧缓存
 • system 稳定是前提
@@ -241,6 +247,8 @@ Q4 为什么写工具不能缓存?
 • Trace:调用链全景
 • 指标:聚合趋势与告警
 >>Agent 系统一个都不能少
+#SEQ 请求全链路时序|Client,WAF 边缘,API,Provider |0->1:请求(带 JWT);1->2:限流+注入检查;2->3:路由调用;3->2:SSE 流;2->0:打字机+usage;2->2:metrics 上报|每跳独立超时预算(TBP)
+
 #PAGE 模型调用日志
 • 记:模型/版本/Prompt 版本
 • 输入输出 Token/Cost/Latency
@@ -278,18 +286,24 @@ Q4 为什么写工具不能缓存?
 • 平均延迟/P95/P99
 • 调用失败率/fallback 率
 >>容量与成本的风向标
+#CHART donut|CostLedger 分摊实测(元)|primary=1.0,fast=0.2|insight=强弱分层:杂任务走 fast 省 80%|CostLedger 真实输出
+
 #PAGE Agent 指标
 • 工具调用准确率/失败率
 • 检索命中率/引用准确率
 • Loop 中断次数/恢复成功率
 • 子 Agent 成功率
 >>Agent 健康度的体检单
+#GRID 监控指标四族|业务:成功率/接管率/满意度;模型:延迟P95/成本/fallback率;Agent:工具准确率/恢复率;安全:拦截率/高危次数/SQL拦截|cols=2|北极星:任务成功率
+
 #PAGE 安全指标
 • 高危工具调用次数
 • 越权拦截率/危险 SQL 拦截率
 • 敏感字段访问次数
 • 人工确认触发率
 >>异常升高=立即排查
+#TERM 风控栈端到端实测|$ POST /v1/chat/completions(注入文本);HTTP 400  injection blocked;$ POST + x-idempotency-key: replay-1(第2次);HTTP 429  replay detected;$ 14 连发请求;8×200 → 6×429 rate limited;$ GET /metrics;platform_security_blocks_total{type="injection"} 1|全部真实 curl 记录
+
 #PAGE 告警七类
 • 模型失败率升高
 • 工具失败率升高
@@ -350,6 +364,8 @@ Q4 高基数问题怎么防?
 • RAG 策略/知识库
 • Workflow/Agent 本身
 >>一切皆版本,一切可回滚
+#TABLE 版本化对象清单,对象,版本内容,回滚方式;模型,厂商/参数/fallback 链,Flag 切换;Prompt,模板+评测报告,Flag 切换;工具,Schema/权限/逻辑,registry 版本;Skill,步骤/质量标准,版本递增;RAG 策略,分块/模型/Rerank,配置回退;知识库,快照+变更日志,快照恢复|hl=3|一切皆版本,一切可回滚
+
 #PAGE 模型与 Prompt 版本
 • 记录:效果差异/适用场景
 • 回滚点:评测通过的旧版本
@@ -371,6 +387,8 @@ Q4 高基数问题怎么防?
 • 按任务类型/风险等级
 • A/B Test+指标观察
 >>平台:一致性哈希百分比灰度
+#FLOW 灰度发布流水线|变更+评测通过->审批->10% 流量->指标观察 24h->50%->100%|loop=3|note=任一指标异常→FeatureFlag 一键回滚(秒级)|一致性哈希:同用户判定恒定
+
 #PAGE 灰度的工程要求
 • 同一用户判定恒定
 • 比例可精确控制
@@ -395,6 +413,8 @@ Q4 高基数问题怎么防?
 • 服务化:模型/上下文/工具/工作流/评测/日志服务
 • 治理:鉴权/限流/审计/版本/成本分摊/质量门禁/上线审批
 >>从"项目"到"平台"的进化
+#GRID 生产化封装与 MCP 治理|SDK:Gateway/Context/ToolCall;服务化:模型/工具/评测独立扩缩;治理:鉴权/限流/审计/成本分摊;质量门禁:评测达标才发布;密钥:不入库/env 注入;租户:JWT 声明+数据隔离|cols=3
+
 #PAGE 部署形态
 • 本地:Compose 一键全家桶
 • 企业内网:模型/业务/知识库全内网
@@ -409,6 +429,8 @@ Q4 高基数问题怎么防?
 • CI:测试+覆盖率+评测
 • 评测达标→审批→灰度→全量
 >>变更流水线四道闸
+#TIMELINE 变更流水线四道闸|CI:测试+覆盖率+lint;评测:Golden 全量回归;灰度:10%→50%→100%;观察:24h 指标窗口|regressed 非空 → 阻断
+
 #PAGE 应用:Prompt 上线全流程
 • 改动→评测(improved 12)
 • Flag 10% 灰度→观察 24h

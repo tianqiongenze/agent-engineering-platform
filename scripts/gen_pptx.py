@@ -1,18 +1,33 @@
 #!/usr/bin/env python3
-"""生成 7 章授课 PPT(数据驱动,python-pptx)。
+"""生成授课 PPT v2(图文并茂版)。
 
-内容模块:scripts/ppt_content/ch{N}.py,各导出 META 与 PAGES。
-页类型:
-  ("SECTION:", 标题)            讲次分隔页(深蓝底)
-  ("TOC:", [条目...])           目录页(双栏)
-  ("QUIZ:", 标题, 正文)         自测页(琥珀边条)
-  (标题, 正文, 备注|None)       标准内容页(备注进底部蓝条)
-用法:uv run --with python-pptx python scripts/gen_pptx.py [章号模块名...]
+内容 DSL(scripts/ppt_content/ch{N}.txt):
+  #META no|title|subtitle
+  #TOC 条目行(重绘为双栏卡片目录)
+  #SECTION 标题(带讲次进度指示)
+  #QUIZ 标题 | 问题行
+  #CODE 标题|src/path.py:a-b
+  #PAGE 标题 | 要点行 |>>备注(重绘为卡片页)
+  #ARCH 标题|层1:组件,组件;层2:… |流标|tag|tag
+  #FLOW 标题|步骤1->步骤2->… |loop=N|note=…|tag
+  #STATE 标题|节点,…;A->B:标签;… |tag
+  #SEQ 标题 |角色1,角色2,角色3 |0->1:消息;1->2:消息|tag
+  #CHART bar|图表标题|k=v,k=v |insight=…|tag
+  #METRICS 标题|值^后缀^标签;… |tag
+  #TERM 标题|行1;行2;… |tag
+  #PYRAMID 标题|名:说明;… |tag
+  #TIMELINE 标题|头:述;… |tag
+  #GRID 标题|头:述;… |cols=N|tag
+  #TABLE 标题|表头,列…;行1,… |hl=N|tag
+
+输出:03-课件PPT/第N章-*.pptx(完整版)+ 03-课件PPT/讲次版/(按讲切分)
+用法:uv run --with python-pptx --with matplotlib python scripts/gen_pptx.py [章号…]
 """
 
 from __future__ import annotations
 
-import importlib
+import math
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -20,201 +35,59 @@ from pathlib import Path
 from pptx import Presentation
 from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN
-from pptx.util import Emu, Pt
+from pptx.util import Emu
 
-INK = RGBColor(0x0B, 0x1D, 0x3A)
-BLUE = RGBColor(0x25, 0x63, 0xEB)
-AMBER = RGBColor(0xF5, 0x9E, 0x0B)
-GREY = RGBColor(0x47, 0x55, 0x69)
-WHITE = RGBColor(255, 255, 255)
-SILVER = RGBColor(0xCB, 0xD5, 0xE1)
-FAINT = RGBColor(0x94, 0xA3, 0xB8)
-LIGHT = RGBColor(0xF1, 0xF5, 0xF9)
-FONT = "PingFang SC"
-W, H = Emu(12192000), Emu(6858000)
+sys.path.insert(0, str(Path(__file__).parent))
+import pptx_visuals as V
 
+W, H = V.W, V.H
 OUT = Path(__file__).resolve().parents[3] / "03-课件PPT"
-X0, XM = Emu(640000), Emu(700000)
+TMP = Path(tempfile.gettempdir())
+
+KINDS = (
+    "#TOC",
+    "#SECTION",
+    "#PAGE",
+    "#QUIZ",
+    "#CODE",
+    "#ARCH",
+    "#FLOW",
+    "#STATE",
+    "#SEQ",
+    "#CHART",
+    "#METRICS",
+    "#TERM",
+    "#PYRAMID",
+    "#TIMELINE",
+    "#GRID",
+    "#TABLE",
+)
 
 
-def _text(shape, content: str, size: int, color=GREY, bold=False, align=PP_ALIGN.LEFT, spacing=1.0):
-    tf = shape.text_frame
-    tf.word_wrap = True
-    first = True
-    for line in content.split("\n"):
-        p = tf.paragraphs[0] if first else tf.add_paragraph()
-        first = False
-        p.alignment = align
-        p.line_spacing = spacing
-        r = p.add_run()
-        r.text = line
-        r.font.name = FONT
-        r.font.size = Pt(size)
-        r.font.bold = bold
-        r.font.color.rgb = color
-
-
-def _footer(slide, idx: int, total: int, chapter: str):
-    box = slide.shapes.add_textbox(W - Emu(2300000), H - Emu(540000), Emu(1900000), Emu(340000))
-    _text(box, f"第{chapter}章 · {idx}/{total}", 10, FAINT, align=PP_ALIGN.RIGHT)
-
-
-def _cover(prs, no: str, title: str, subtitle: str):
-    s = prs.slides.add_slide(prs.slide_layouts[6])
-    bg = s.shapes.add_shape(1, 0, 0, W, H)
-    bg.fill.solid()
-    bg.fill.fore_color.rgb = INK
-    band = s.shapes.add_shape(1, 0, H - Emu(260000), W, Emu(260000))
-    band.fill.solid()
-    band.fill.fore_color.rgb = AMBER
-    _text(
-        s.shapes.add_textbox(X0, Emu(1400000), W - 2 * X0, Emu(640000)),
-        f"第 {no} 章",
-        28,
-        AMBER,
-        True,
-    )
-    _text(s.shapes.add_textbox(X0, Emu(2000000), W - 2 * X0, Emu(1700000)), title, 42, WHITE, True)
-    _text(s.shapes.add_textbox(X0, Emu(3750000), W - 2 * X0, Emu(900000)), subtitle, 18, SILVER)
-    _text(
-        s.shapes.add_textbox(X0, Emu(5200000), W - 2 * X0, Emu(500000)),
-        "AI Agent 全栈工程师训练营 · Agent Engineering Platform",
-        14,
-        FAINT,
-    )
-
-
-def _section(prs, title: str):
-    s = prs.slides.add_slide(prs.slide_layouts[6])
-    bg = s.shapes.add_shape(1, 0, 0, W, H)
-    bg.fill.solid()
-    bg.fill.fore_color.rgb = INK
-    tag = s.shapes.add_shape(1, X0, Emu(2600000), Emu(120000), Emu(1000000))
-    tag.fill.solid()
-    tag.fill.fore_color.rgb = AMBER
-    _text(
-        s.shapes.add_textbox(X0 + Emu(300000), Emu(2550000), W - 2 * X0, Emu(1200000)),
-        title,
-        32,
-        WHITE,
-        True,
-    )
-
-
-def _toc(prs, items: list):
-    s = prs.slides.add_slide(prs.slide_layouts[6])
-    bar = s.shapes.add_shape(1, 0, 0, W, Emu(1050000))
-    bar.fill.solid()
-    bar.fill.fore_color.rgb = INK
-    _text(
-        s.shapes.add_textbox(XM, Emu(180000), W - 2 * XM, Emu(720000)), "本章目录", 26, WHITE, True
-    )
-    half = (len(items) + 1) // 2
-    for col, chunk in enumerate((items[:half], items[half:])):
-        box = s.shapes.add_textbox(
-            XM + col * Emu(5600000), Emu(1450000), Emu(5300000), Emu(4900000)
-        )
-        _text(
-            box,
-            "\n".join(f"{i + 1 + col * half}. {it}" for i, it in enumerate(chunk)),
-            15,
-            GREY,
-            spacing=1.35,
-        )
-
-
-def _content(prs, title: str, body: str, note):
-    s = prs.slides.add_slide(prs.slide_layouts[6])
-    bar = s.shapes.add_shape(1, 0, 0, W, Emu(1050000))
-    bar.fill.solid()
-    bar.fill.fore_color.rgb = INK
-    tag = s.shapes.add_shape(1, 0, 0, Emu(150000), Emu(1050000))
-    tag.fill.solid()
-    tag.fill.fore_color.rgb = AMBER
-    _text(
-        s.shapes.add_textbox(Emu(360000), Emu(160000), W - Emu(720000), Emu(740000)),
-        title,
-        24,
-        WHITE,
-        True,
-    )
-    n_lines = body.count("\n") + 1
-    size = 16 if n_lines <= 7 else 13
-    _text(
-        s.shapes.add_textbox(XM, Emu(1450000), W - 2 * XM, Emu(4200000)),
-        body,
-        size,
-        GREY,
-        spacing=1.25,
-    )
-    if note:
-        box = s.shapes.add_shape(1, XM, Emu(5600000), W - 2 * XM, Emu(820000))
-        box.fill.solid()
-        box.fill.fore_color.rgb = LIGHT
-        tf = box.text_frame
-        tf.word_wrap = True
-        r = tf.paragraphs[0].add_run()
-        r.text = "▶ " + note
-        r.font.name = FONT
-        r.font.size = Pt(12)
-        r.font.color.rgb = BLUE
-
-
-def _quiz(prs, title: str, body: str):
-    s = prs.slides.add_slide(prs.slide_layouts[6])
-    bar = s.shapes.add_shape(1, 0, 0, W, Emu(1050000))
-    bar.fill.solid()
-    bar.fill.fore_color.rgb = AMBER
-    _text(
-        s.shapes.add_textbox(Emu(360000), Emu(160000), W - Emu(720000), Emu(740000)),
-        title,
-        24,
-        INK,
-        True,
-    )
-    _text(
-        s.shapes.add_textbox(XM, Emu(1450000), W - 2 * XM, Emu(4400000)),
-        body,
-        17,
-        GREY,
-        spacing=1.3,
-    )
-
-
-def _parse_txt(path: Path) -> tuple[dict, list]:
-    """解析紧凑 DSL:首行 #META no=..|title=..|subtitle=..;块指令 #TOC/#SECTION/#PAGE/#QUIZ。"""
+def parse_txt(path: Path):
     meta: dict = {}
-    pages: list = []
-    kind = ""
-    title = ""
-    lines: list[str] = []
-    note = ""
+    pages: list[tuple] = []
+    kind, title, lines, note, extra = "", "", [], "", ""
 
-    def flush() -> None:
-        nonlocal kind, title, lines, note
-        if not kind:
-            return
-        if kind == "TOC":
-            pages.append(("TOC:", list(lines)))
-        elif kind == "CODE":
-            pages.append(("CODE:", title))
-        elif kind == "SECTION":
-            pages.append(("SECTION:", title))
-        elif kind == "QUIZ":
-            pages.append(("QUIZ:", title, "\n".join(lines)))
-        else:
-            pages.append((title, "\n".join(lines), note or None))
-        kind, title, lines, note = "", "", [], ""
+    def flush():
+        nonlocal kind, title, lines, note, extra
+        if kind:
+            pages.append((kind, title, "\n".join(lines), note, extra))
+        kind, title, lines, note, extra = "", "", [], "", ""
 
     for raw in path.read_text().splitlines():
         line = raw.rstrip()
         if line.startswith("#META"):
             _, rest = line.split(" ", 1)
-            parts = rest.split("|")
-            meta = {"no": parts[0], "title": parts[1], "subtitle": parts[2]}
-        elif line.startswith(("#TOC", "#SECTION", "#PAGE", "#QUIZ", "#CODE")):
+            no, t, s = rest.split("|")
+            meta = {"no": no, "title": t, "subtitle": s}
+        elif line.startswith(KINDS):
             flush()
-            kind, title = line[1:].split(" ", 1) if " " in line else (line[1:], "")
+            m = re.match(r"#(\w+)\s*(.*)", line)
+            kind = m.group(1)
+            parts = m.group(2).split("|")
+            title = parts[0].strip() if parts[0].strip() else ""
+            extra = "|".join(parts[1:]).strip() if len(parts) > 1 else ""
         elif line.startswith(">>"):
             note = line[2:].strip()
         elif line.strip():
@@ -223,105 +96,548 @@ def _parse_txt(path: Path) -> tuple[dict, list]:
     return meta, pages
 
 
-_CODE_FONT_MONO = "/System/Library/Fonts/Menlo.ttc"
-_CODE_FONT_CJK = "/System/Library/Fonts/Hiragino Sans GB.ttc"
+def cover(prs, no, title, subtitle):
+    s = prs.slides.add_slide(prs.slide_layouts[6])
+    V.box(s, 0, 0, W, H, fill=V.INK, radius=False)
+    for r, c in (
+        (520, V.PANEL),
+        (380, RGBColor(0x1B, 0x37, 0x63)),
+        (250, RGBColor(0x24, 0x46, 0x7A)),
+    ):
+        cir = s.shapes.add_shape(
+            V.SHP.OVAL,
+            W - Emu(int(r * 7144)),
+            Emu(int(r * 2858)),
+            Emu(int(r * 9525)),
+            Emu(int(r * 9525)),
+        )
+        cir.fill.solid()
+        cir.fill.fore_color.rgb = c
+        cir.line.fill.background()
+        cir.shadow.inherit = False
+    V.box(s, 0, H - Emu(240000), W, Emu(240000), fill=V.AMBER, radius=False)
+    V.box(s, V._px(90), V._px(96), V._px(58), V._px(58), fill=V.AMBER)
+    V.label(s, V._px(90), V._px(90), V._px(58), V._px(58), no, 22, V.INK, True)
+    V.label(
+        s,
+        V._px(170),
+        V._px(120),
+        W - V._px(700),
+        V._px(70),
+        "AI AGENT 全栈工程师训练营",
+        15,
+        V.FAINT,
+        align=PP_ALIGN.LEFT,
+    )
+    V.label(
+        s,
+        V._px(170),
+        V._px(210),
+        W - V._px(560),
+        V._px(210),
+        title,
+        40,
+        V.WHITE,
+        True,
+        align=PP_ALIGN.LEFT,
+        spacing=1.05,
+    )
+    V.label(
+        s,
+        V._px(170),
+        V._px(440),
+        W - V._px(600),
+        V._px(80),
+        subtitle,
+        16,
+        V.SILVER,
+        align=PP_ALIGN.LEFT,
+    )
+    V.label(
+        s,
+        V._px(170),
+        H - V._px(150),
+        W - V._px(400),
+        V._px(50),
+        "Agent Engineering Platform · v1.3 · 审计 9.4/10 · 125 测试",
+        12,
+        V.FAINT,
+        align=PP_ALIGN.LEFT,
+    )
 
 
-def _render_code_png(code: str, out_png: Path) -> tuple[int, int]:
-    """把源码渲染为深底截图(ASCII 用 Menlo,含中文行用 PingFang)。"""
+def toc_slide(prs, items):
+    s = prs.slides.add_slide(prs.slide_layouts[6])
+    V.box(s, 0, 0, W, H, fill=V.INK, radius=False)
+    V.box(s, 0, 0, V._px(10), H, fill=V.AMBER, radius=False)
+    V.label(
+        s,
+        V._px(70),
+        V._px(64),
+        W - V._px(200),
+        V._px(60),
+        "本章目录",
+        28,
+        V.WHITE,
+        True,
+        align=PP_ALIGN.LEFT,
+    )
+    V.label(
+        s,
+        V._px(70),
+        V._px(130),
+        W - V._px(300),
+        V._px(40),
+        f"{len(items)} 个知识模块 · 含实测数据图表与代码走查",
+        12,
+        V.FAINT,
+        align=PP_ALIGN.LEFT,
+    )
+    half = (len(items) + 1) // 2
+    for col, chunk in enumerate((items[:half], items[half:])):
+        x = V._px(90) + col * int(W * 0.48)
+        for i, it in enumerate(chunk):
+            y = V._px(200) + i * V._px(76)
+            idx = i + 1 + col * half
+            c = V.ACCENTS[idx % len(V.ACCENTS)]
+            V.box(s, x, y, int(W * 0.44), V._px(62), fill=V.PANEL)
+            V.box(s, x, y, V._px(5), V._px(62), fill=c, radius=False)
+            V.label(
+                s,
+                x + V._px(18),
+                y,
+                V._px(44),
+                V._px(62),
+                f"{idx:02d}",
+                15,
+                c,
+                True,
+                align=PP_ALIGN.LEFT,
+            )
+            V.label(
+                s,
+                x + V._px(68),
+                y,
+                int(W * 0.44) - V._px(84),
+                V._px(62),
+                it,
+                13,
+                V.SILVER,
+                align=PP_ALIGN.LEFT,
+            )
+
+
+def section_slide(prs, title, idx, total_sections):
+    s = prs.slides.add_slide(prs.slide_layouts[6])
+    V.box(s, 0, 0, W, H, fill=V.INK, radius=False)
+    for i in range(max(1, total_sections)):
+        c = V.AMBER if i == idx else RGBColor(0x27, 0x40, 0x66)
+        V.box(s, V._px(90) + i * V._px(46), V._px(100), V._px(34), V._px(8), fill=c, radius=False)
+    V.box(s, V._px(90), V._px(250), V._px(120), V._px(6), fill=V.AMBER, radius=False)
+    V.label(
+        s,
+        V._px(90),
+        V._px(300),
+        W - V._px(240),
+        V._px(130),
+        title,
+        32,
+        V.WHITE,
+        True,
+        align=PP_ALIGN.LEFT,
+        spacing=1.05,
+    )
+    V.label(
+        s,
+        V._px(90),
+        V._px(450),
+        W - V._px(300),
+        V._px(50),
+        f"LECTURE {idx + 1:02d} / {total_sections:02d}",
+        14,
+        V.AMBER,
+        align=PP_ALIGN.LEFT,
+    )
+
+
+def quiz_slide(prs, title, body):
+    s = prs.slides.add_slide(prs.slide_layouts[6])
+    bar_h = V._px(74)
+    V.box(s, 0, 0, W, bar_h, fill=V.AMBER, radius=False)
+    V.label(s, V._px(32), 0, W - V._px(80), bar_h, title, 20, V.INK, True, align=PP_ALIGN.LEFT)
+    qs = [l for l in body.split("\n") if l.strip()]
+    for i, q in enumerate(qs[:6]):
+        y = V._px(126) + i * V._px(86)
+        V.box(s, V._px(120), y, W - V._px(240), V._px(68), fill=V.LIGHT)
+        V.box(s, V._px(120), y, V._px(5), V._px(68), fill=V.BLUE, radius=False)
+        V.label(
+            s,
+            V._px(146),
+            y,
+            V._px(44),
+            V._px(68),
+            f"Q{i + 1}",
+            15,
+            V.BLUE,
+            True,
+            align=PP_ALIGN.LEFT,
+        )
+        text = re.sub(r"^Q\d+[.:、)]?\s*", "", q).strip()
+        V.label(
+            s, V._px(200), y, W - V._px(380), V._px(68), text, 13.5, V.GREY, align=PP_ALIGN.LEFT
+        )
+
+
+def card_page(prs, title, body, note, ch_no):
+    s = prs.slides.add_slide(prs.slide_layouts[6])
+    V.header(s, title, f"第{ch_no}章")
+    items = []
+    for l in body.split("\n"):
+        if not l.strip():
+            continue
+        t = re.sub(r"^[•▎·]+\s*", "", l).strip()
+        t = re.sub(r"^\d+[.、)]\s*", "", t).strip()
+        items.append(t)
+    margin, gap, top = V._px(96), V._px(20), V._px(104)
+    avail = H - top - V._px(112 if note else 44)
+    two_col = len(items) >= 5
+    if two_col:
+        rows = math.ceil(len(items) / 2)
+        cw = (W - margin * 2 - gap) // 2
+        ch = min(V._px(92), (avail - gap * (rows - 1)) // rows)
+        for i, text in enumerate(items):
+            r, c = divmod(i, 2)
+            x = margin + c * (cw + gap)
+            y = top + r * (ch + gap)
+            color = V.ACCENTS[i % len(V.ACCENTS)]
+            V.box(s, x, y, cw, ch, fill=V.WHITE, line=V.BORDER)
+            V.box(s, x, y, V._px(5), ch, fill=color, radius=False)
+            V.label(
+                s,
+                x + V._px(46),
+                y,
+                cw - V._px(64),
+                ch,
+                text,
+                13,
+                V.GREY,
+                True,
+                align=PP_ALIGN.LEFT,
+                spacing=1.12,
+            )
+            V.box(s, x + V._px(14), y + ch // 2 - V._px(7), V._px(14), V._px(14), fill=color)
+    else:
+        rows = max(1, len(items))
+        ch = min(V._px(108), (avail - gap * (rows - 1)) // rows)
+        for i, text in enumerate(items):
+            y = top + i * (ch + gap)
+            color = V.ACCENTS[i % len(V.ACCENTS)]
+            V.box(s, margin, y, W - margin * 2, ch, fill=V.WHITE, line=V.BORDER)
+            V.box(s, margin, y, V._px(6), ch, fill=color, radius=False)
+            V.box(s, margin + V._px(18), y + ch // 2 - V._px(15), V._px(30), V._px(30), fill=color)
+            V.label(
+                s,
+                margin + V._px(18),
+                y + ch // 2 - V._px(16),
+                V._px(30),
+                V._px(30),
+                str(i + 1),
+                13,
+                V.WHITE,
+                True,
+            )
+            V.label(
+                s,
+                margin + V._px(64),
+                y,
+                W - margin * 2 - V._px(88),
+                ch,
+                text,
+                14,
+                V.GREY,
+                True,
+                align=PP_ALIGN.LEFT,
+                spacing=1.12,
+            )
+    if note:
+        y = H - V._px(96)
+        V.box(s, margin, y, W - margin * 2, V._px(58), fill=V.LIGHT)
+        V.label(
+            s,
+            margin + V._px(20),
+            y,
+            W - margin * 2 - V._px(40),
+            V._px(58),
+            "▶ " + note,
+            12.5,
+            V.BLUE,
+            align=PP_ALIGN.LEFT,
+        )
+
+
+def _grab(extra, key, cast=str):
+    m = re.search(rf"\|{key}=([^|]*)", extra or "")
+    if not m:
+        return None, extra or ""
+    val = m.group(1)
+    return (cast(val) if cast is not str else val), extra.replace(m.group(0), "")
+
+
+def _strip(extra: str) -> str:
+    return (extra or "").strip(" |")
+
+
+def render_page(prs, page, ch_no, idx, total, sections_total=None):
+    kind, title, body, note, extra = page
+    data = body if body.strip() else extra
+    if kind == "TOC":
+        toc_slide(prs, [l for l in body.split("\n") if l.strip()])
+    elif kind == "SECTION":
+        return "SECTION", title
+    elif kind == "QUIZ":
+        quiz_slide(prs, title, body)
+    elif kind == "PAGE":
+        card_page(prs, title, body, note, ch_no)
+    elif kind == "ARCH":
+        layers_raw, flows, tag = data, None, ""
+        m = re.search(r"\|flow=([^|]*)", layers_raw)
+        if m:
+            flows = m.group(1)
+            layers_raw = layers_raw.replace(m.group(0), "")
+        tag = layers_raw.split("|")[-1].strip() if "|" in layers_raw else ""
+        if tag and not re.search(r"[\u4e00-\u9fffA-Za-z]", tag.split(":")[-1]):
+            layers_raw = layers_raw.rsplit("|", 1)[0]
+        layers = [
+            [c.strip() for c in g.split(",")]
+            for g in layers_raw.replace("\n", "").split(";")
+            if g.strip()
+        ]
+        V.arch_diagram(
+            prs.slides.add_slide(prs.slide_layouts[6]), title, layers, _strip(tag), flows or ""
+        )
+    elif kind == "FLOW":
+        src = data
+        loop, fnote = None, ""
+        m = re.search(r"\|loop=(\d+)", src)
+        if m:
+            loop = int(m.group(1))
+            src = src.replace(m.group(0), "")
+        m = re.search(r"\|note=([^|]*)", src)
+        if m:
+            fnote = m.group(1)
+            src = src.replace(m.group(0), "")
+        tag = src.split("|")[-1].strip() if "|" in src else ""
+        if tag and ("=" in tag or not tag):
+            tag = ""
+            src = src.rsplit("|", 1)[0] if "|" in src else src
+        steps = [x.strip() for x in src.replace("\n", "").split("->") if x.strip()]
+        V.flow_diagram(
+            prs.slides.add_slide(prs.slide_layouts[6]), title, steps, tag, loop, fnote or note or ""
+        )
+    elif kind == "STATE":
+        spec = (
+            data.rsplit("|", 1)[0].strip()
+            if data.count("|") and not data.rsplit("|", 1)[1].strip()
+            else data
+        )
+        V.state_diagram(
+            prs.slides.add_slide(prs.slide_layouts[6]), title, spec.replace("\n", ""), ""
+        )
+    elif kind == "SEQ":
+        actors_part, _, msg_part = data.partition("|")
+        actors = [a.strip() for a in actors_part.split(",") if a.strip()]
+        msgs = []
+        for m in msg_part.split(";"):
+            m = m.strip()
+            if not m:
+                continue
+            route, _, lab = m.partition(":")
+            fi, _, ti = route.partition("->")
+            msgs.append((int(fi), int(ti), lab.strip()))
+        V.seq_diagram(prs.slides.add_slide(prs.slide_layouts[6]), title, actors, msgs)
+    elif kind == "CHART":
+        insight = ""
+        m = re.search(r"\|insight=([^|]*)", data)
+        if m:
+            insight = m.group(1)
+            data = data.replace(m.group(0), "")
+        slide_title = title
+        if "|" in data and not data.startswith(("bar", "line", "donut", "hbar", "groupbar")):
+            pass
+        base = f"{title}|{data}"
+        spec = "|".join(base.split("|")[:3])
+        png = V.chart_png(spec.replace("\n", ""), TMP / f"chart_{abs(hash(spec)) & 0xFFFFF}")
+        slide = prs.slides.add_slide(prs.slide_layouts[6])
+        seg_title = spec.split("|")[1] if spec.count("|") >= 1 else title
+        V.chart_slide(prs, slide, seg_title, png, "", insight or note or "")
+    elif kind == "METRICS":
+        cards = []
+        for part in data.replace("\n", "").split(";"):
+            part = part.strip()
+            if part:
+                v, s_, lab = (part.split("^") + ["", ""])[:3]
+                cards.append((v, s_, lab))
+        V.metric_cards(prs.slides.add_slide(prs.slide_layouts[6]), title, cards, _strip(extra))
+    elif kind == "TERM":
+        src = data.split("|")[0]
+        lines = src.split("\n") if "\n" in src else src.split(";")
+        V.terminal(
+            prs.slides.add_slide(prs.slide_layouts[6]),
+            title,
+            [l for l in lines if l.strip()],
+            _strip(extra),
+        )
+    elif kind == "PYRAMID":
+        levels = []
+        for g in data.replace("\n", "").split(";"):
+            if g.strip():
+                n_, _, d_ = g.partition(":")
+                levels.append((n_.strip(), d_.strip()))
+        V.pyramid(prs.slides.add_slide(prs.slide_layouts[6]), title, levels, _strip(extra))
+    elif kind == "TIMELINE":
+        items = []
+        for g in data.replace("\n", "").split(";"):
+            if g.strip():
+                h_, _, d_ = g.partition(":")
+                items.append((h_.strip(), d_.strip()))
+        V.timeline(prs.slides.add_slide(prs.slide_layouts[6]), title, items, _strip(extra))
+    elif kind == "GRID":
+        cols = 3
+        m = re.search(r"\|cols=(\d)", data)
+        if m:
+            cols = int(m.group(1))
+            data = data.replace(m.group(0), "")
+        cards = []
+        for g in data.replace("\n", "").split(";"):
+            if g.strip():
+                h_, _, d_ = g.partition(":")
+                cards.append((h_.strip(), d_.strip()))
+        V.card_grid(
+            prs.slides.add_slide(prs.slide_layouts[6]), title, cards, _strip(""), cols=cols or 3
+        )
+    elif kind == "TABLE":
+        hl = -1
+        m = re.search(r"\|hl=(\d+)", data)
+        if m:
+            hl = int(m.group(1))
+            data = data.replace(m.group(0), "")
+        tbl_src = data.split("|")[0]
+        rows = [
+            [c.strip() for c in ln.split(",")]
+            for ln in tbl_src.replace("\n", "").split(";")
+            if ln.strip()
+        ]
+        V.styled_table(
+            prs.slides.add_slide(prs.slide_layouts[6]),
+            title,
+            rows,
+            _strip(""),
+            highlight_col=hl if hl is not None else -1,
+        )
+    elif kind == "CODE":
+        spec = extra if extra.strip() else body
+        path_part, _, range_part = spec.partition(":")
+        f = Path(__file__).resolve().parents[1] / path_part.strip()
+        a, _, b = range_part.partition("-")
+        src = f.read_text().splitlines()
+        code = "\n".join(src[int(a) - 1 : int(b or a)])
+        png = TMP / f"code_{abs(hash(body)) & 0xFFFFF}.png"
+        w, h = _render_code(code, png)
+        slide = prs.slides.add_slide(prs.slide_layouts[6])
+        V.box(slide, 0, 0, W, H, fill=V.INK, radius=False)
+        V.box(slide, 0, 0, W, V._px(64), fill=V.PANEL, radius=False)
+        V.label(
+            slide,
+            V._px(28),
+            0,
+            W - V._px(80),
+            V._px(64),
+            f"{title} · {path_part}:{a}-{b}",
+            16,
+            V.AMBER,
+            True,
+            align=PP_ALIGN.LEFT,
+        )
+        scale = min(int(W * 0.94) / w, int(H * 0.84) / h)
+        slide.shapes.add_picture(
+            str(png), int(W - w * scale) // 2, V._px(80), int(w * scale), int(h * scale)
+        )
+    last = prs.slides[len(prs.slides._sldIdLst) - 1]
+    V.footer(last, idx, total, ch_no)
+    return None
+
+
+def _render_code(code: str, out_png: Path):
     from PIL import Image, ImageDraw, ImageFont
 
     lines = code.splitlines()
-    size = (1760, max(220, 90 + 30 * len(lines) + 40))
-    img = Image.new("RGB", size, (13, 27, 42))
-    draw = ImageDraw.Draw(img)
-    mono = ImageFont.truetype(_CODE_FONT_MONO, 19)
-    cjk = ImageFont.truetype(_CODE_FONT_CJK, 19)
-    gutter_font = ImageFont.truetype(_CODE_FONT_MONO, 15)
+    img = Image.new("RGB", (1760, max(220, 90 + 30 * len(lines) + 40)), (13, 27, 42))
+    d = ImageDraw.Draw(img)
+    mono = ImageFont.truetype("/System/Library/Fonts/Menlo.ttc", 19)
+    cjk = ImageFont.truetype("/System/Library/Fonts/Hiragino Sans GB.ttc", 19)
+    gutter = ImageFont.truetype("/System/Library/Fonts/Menlo.ttc", 15)
     y = 60
-    for i, line in enumerate(lines, start=1):
-        line = line[:96]
-        draw.text((56, y), f"{i:>3}", font=gutter_font, fill=(94, 110, 130))
-        font = cjk if any(ord(c) > 0x2E80 for c in line) else mono
+    for i, ln in enumerate(lines, 1):
+        ln = ln[:96]
+        d.text((56, y), f"{i:>3}", font=gutter, fill=(94, 110, 130))
+        font = cjk if any(ord(c) > 0x2E80 for c in ln) else mono
         color = (200, 210, 225)
-        s = line.lstrip()
-        if s.startswith(("class ", "def ", "async def")):
+        st = ln.lstrip()
+        if st.startswith(("class ", "def ", "async def")):
             color = (120, 180, 255)
-        elif s.startswith("#"):
+        elif st.startswith("#"):
             color = (120, 200, 140)
-        draw.text((110, y), line, font=font, fill=color)
+        d.text((110, y), ln, font=font, fill=color)
         y += 30
     img.save(out_png)
-    return size
+    return img.size
 
 
-def _code_page(prs, title: str, spec: str, repo_root: Path):
-    path_part, _, range_part = spec.partition(":")
-    f = repo_root / path_part.strip()
-    start, _, end = range_part.partition("-")
-    src_lines = f.read_text().splitlines()
-    a, b = int(start), int(end or start)
-    code = "\n".join(src_lines[a - 1 : b])
-    out_png = Path(tempfile.gettempdir()) / f"code_{abs(hash(spec))}.png"
-    w, h = _render_code_png(code, out_png)
-    s = prs.slides.add_slide(prs.slide_layouts[6])
-    bg = s.shapes.add_shape(1, 0, 0, W, H)
-    bg.fill.solid()
-    bg.fill.fore_color.rgb = INK
-    bar = s.shapes.add_shape(1, 0, 0, W, Emu(900000))
-    bar.fill.solid()
-    bar.fill.fore_color.rgb = RGBColor(0x14, 0x2A, 0x4C)
-    _text(
-        s.shapes.add_textbox(Emu(360000), Emu(120000), W - Emu(720000), Emu(660000)),
-        f"{title}  ·  {path_part}:{a}-{b}",
-        20,
-        AMBER,
-        True,
-    )
-    avail_h = int(H * 0.86)
-    avail_w = int(W * 0.94)
-    scale = min(avail_w / w, avail_h / h)
-    pic_w, pic_h = int(w * scale), int(h * scale)
-    s.shapes.add_picture(str(out_png), int((W - pic_w) / 2), Emu(1100000), pic_w, pic_h)
-
-
-def build(module_name: str):
+def build(module_name: str, lecture_split: bool = True):
     txt = Path(__file__).parent / "ppt_content" / f"{module_name}.txt"
-    if txt.exists():
-        meta, pages = _parse_txt(txt)
-    else:
-        mod = importlib.import_module(f"ppt_content.{module_name}")
-        meta, pages = mod.META, mod.PAGES
+    meta, pages = parse_txt(txt)
+    sections = [i for i, p in enumerate(pages) if p[0] == "SECTION"]
+    section_titles = [pages[i][1] for i in sections]
     total = len(pages) + 1
     prs = Presentation()
     prs.slide_width, prs.slide_height = W, H
-    _cover(prs, meta["no"], meta["title"], meta["subtitle"])
+    cover(prs, meta["no"], meta["title"], meta["subtitle"])
+    sec_seen = 0
+    section_idx_map: dict[str, int] = {}
     for i, page in enumerate(pages, start=2):
-        kind = page[0]
-        if kind == "CODE:":
-            meta_title, _, code_spec = page[1].partition("|")
-            _code_page(
-                prs, meta_title.strip(), code_spec.strip(), Path(__file__).resolve().parents[1]
-            )
-        elif kind == "SECTION:":
-            _section(prs, page[1])
-        elif kind == "TOC:":
-            _toc(prs, page[1])
-        elif kind == "QUIZ:":
-            _quiz(prs, page[1], page[2])
-        else:
-            _content(prs, page[0], page[1], page[2] if len(page) > 2 else None)
-        last = prs.slides[len(prs.slides._sldIdLst) - 1]
-        _footer(last, i, total, meta["no"])
-    safe_title = meta["title"].split(":")[0].split("、")[0]
-    out = OUT / f"第{meta['no']}章-{safe_title}.pptx"
+        result = render_page(prs, page, meta["no"], i, total)
+        if result and result[0] == "SECTION":
+            section_idx_map[result[1]] = sec_seen
+            # 重绘 section 页(带讲次进度)
+            sl = prs.slides[len(prs.slides._sldIdLst) - 1]
+            section_slide(prs, result[1], sec_seen, len(sections))
+            sec_seen += 1
+    safe = meta["title"].split(":")[0].split("、")[0]
+    out = OUT / f"第{meta['no']}章-{safe}.pptx"
     prs.save(out)
-    print(f"生成: {out.name}({total} 页)")
+    print(f"完整版: {out.name}({len(prs.slides._sldIdLst)} 页)")
+
+    if lecture_split and sections:
+        bounds = list(zip(sections, sections[1:] + [len(pages)]))
+        (OUT / "讲次版").mkdir(exist_ok=True)
+        for li, (start, end) in enumerate(bounds):
+            lp = Presentation()
+            lp.slide_width, lp.slide_height = W, H
+            sub = pages[start][1]
+            cover(lp, f"{meta['no']}.{li + 1}", sub.replace("讲次 ", ""), meta["title"])
+            seg = pages[:1] + pages[start:end]
+            for j, page in enumerate(seg, start=2):
+                res = render_page(lp, page, meta["no"], j, len(seg) + 1)
+                if res and res[0] == "SECTION":
+                    section_slide(lp, res[1], 0, 1)
+            name = re.sub(r"[\\/:*?\"<>|]", "", sub)[:28]
+            lo = OUT / "讲次版" / f"第{meta['no']}章-{li + 1}-{name}.pptx"
+            lp.save(lo)
+        print(f"  讲次版: {len(bounds)} 个文件")
 
 
 def main() -> int:
     targets = sys.argv[1:] or [f"ch{i}" for i in range(1, 8)]
-    sys.path.insert(0, str(Path(__file__).parent))
     OUT.mkdir(parents=True, exist_ok=True)
     for t in targets:
         build(t)

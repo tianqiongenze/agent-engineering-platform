@@ -30,17 +30,23 @@ Lab3 验收清单
 • → observe → finalize
 • 平台:Action(call_tool/finish)表达
 • Decider=思考,Executor=行动
+#FLOW 五段循环(平台 AgentLoop)|observe 观察->think 决策(Decider)->act 执行(Tool)->observe 结果回灌->finalize 输出|loop=1|note=Decider=LLM 防腐层:测试注入脚本,生产接 Gateway|orchestration/loop.py
+
 #PAGE 循环终止条件设计
 • finish 动作:模型自己认为完成
 • max_iterations:硬上限防失控
 • 死循环熔断:重复动作检测
 • 外部取消:用户叫停
 >>四个出口一个都不能少
+#STATE 任务九态状态机(真实实现)|created,planning,running,waiting_tool,tool_failed,waiting_approval,completed,failed,cancelled;created->planning:拿到目标;planning->running:计划就绪;running->waiting_tool:发起调用;waiting_tool->running:结果回灌;waiting_tool->tool_failed:执行异常;running->completed:finish 动作;running->failed:上限/死循环;failed->running:resume 恢复|AgentState 枚举即此
+
 #PAGE 死循环识别算法
 • 连续 N 个完全相同的动作签名
 • 平台:N=3 触发 LoopFailedError
 • 签名=kind+tool+args 的规范序列化
 >>实测:重复天气查询被熔断
+#METRICS Loop 护栏三数字|3^连^相同动作即熔断;8^轮^默认 max_iterations;4^条^终止出口|实测:重复天气查询被 LoopFailedError 拦截
+
 #PAGE 任务中断与恢复
 • 进程被杀:状态在 Checkpoint 里
 • 重启后 resume_from 续跑
@@ -132,6 +138,8 @@ Q4 循环预算怎么定?
 • Planner 本身消耗 Token 与延迟
 • 判断标准:步骤数与不确定性
 >>过度规划是常见反模式
+#PYRAMID Planning 三级策略|动态计划:执行中重估,成本高;一次性计划:目标明确步骤稳;无 Planner:两步内直接做|自顶向下按复杂度选
+
 #PAGE 一次性计划
 • 开始时产出完整步骤清单
 • 适合:目标明确、步骤稳定
@@ -233,6 +241,8 @@ Q4 计划缓存的前提是什么?
 • 已执行步骤与观察历史
 • 计划(若有)与版本信息
 >>最小集原则:够恢复就行
+#SEQ 断点恢复时序|AgentLoop,CheckpointStore,进程 |0->1:每轮 save(深拷贝);0->2:kill -9 模拟崩溃;2->2:重启加载;2->0:resume_from 续跑;0->0:历史观察完整带入→finalize|实测:test_checkpoint_resumes
+
 #PAGE Checkpoint 时机
 • 每轮循环结束即保存
 • 工具执行前后双保险
@@ -283,6 +293,8 @@ Q2 Checkpoint 最小集包含什么?
 Q3 缓存与事实源不一致怎么防?
 Q4 为什么每轮都要落盘?
 #SECTION 讲次 3-4 · Sandbox 与执行边界
+#ARCH Sandbox 三类边界|文件:allowed_roots 可读,writable_roots 可写,realpath 防逃逸;Shell:命令白名单,危险模式硬拦截,禁用头部(sudo/dd);网络:域名白名单,内网按需,统一网关出|flow=声明,校验,拦截
+
 #PAGE Agent 的权限悖论
 • 能力越强,破坏力越大
 • 文件/Shell/网络都是双刃剑
@@ -302,6 +314,8 @@ Q4 为什么每轮都要落盘?
 • 危险模式硬拦截:mkfs/rm变体/管道sh
 • sudo/dd/shutdown 直接禁用
 >>平台实测:rm -rf 被拦
+#TERM Sandbox 拦截实测|$ sandbox.check_command("rm -rf --no-preserve-root /");SandboxViolation: dangerous pattern blocked;$ sandbox.check_command("ls -la")  # 白名单内;True;$ sandbox.check_read("/etc/passwd")  # roots 外;SandboxViolation: read denied outside roots|默认拒绝:白名单外一律拦截
+
 #PAGE 网络边界
 • 出网域名白名单
 • 内网服务按需授权
@@ -322,6 +336,8 @@ Q4 为什么每轮都要落盘?
 • 权限:非 root 用户+drop caps
 • 环境变量:显式注入
 >>同一接口,两种实现
+#TABLE 沙箱形态对比,维度,本地 Sandbox,Docker Sandbox;文件边界,roots 前缀检查,挂载点即边界;网络,进程级约束,容器网络策略;权限,共享内核,nonroot+drop caps;隔离强度,教学/调试,生产级|hl=2|同一接口,两种实现
+
 #PAGE 工具审计与风险回放
 • 每条命令/文件操作全记录
 • 出事后按 run_id 回放现场
@@ -367,6 +383,8 @@ Q4 本地与容器沙箱怎么选?
 • 让 Agent 可配置/可追踪/可恢复
 • 从"一次调用"到"任务执行系统"
 >>平台 orchestration 就是 Harness
+#ARCH Harness 五要素装配|模型:Provider+Router;工具:Registry 动态装配;状态:State+Checkpoint;上下文:Context 管理器;环境:Sandbox 边界|flow=配置,运行,恢复|五要素全部可替换(测试注入 Mock)
+
 #PAGE Harness 的装配五要素
 • 模型:Provider+Router
 • 工具集:Registry 动态装配
@@ -410,18 +428,24 @@ Q4 本地与容器沙箱怎么选?
 • run_test/run_command
 • git_diff/git_status
 >>十件套覆盖开发日常
+#GRID 代码工具十件套|list_files:目录结构;search_code:关键词定位;read_file:单文件读取;read_directory:目录概览;write_file:写入产出;apply_patch:精准修改;run_test:执行测试;run_command:白名单命令;git_diff:变更视图;git_status:仓库状态|cols=5
+
 #PAGE 任务一:代码理解
 • 需求:找出登录逻辑,输出 Markdown
 • 路径:search_code(auth)→read 相关文件
 • → 梳理调用链 → 生成文档
 • 产物:模块说明+文件路径引用
 >>Lab3 验收任务
+#FLOW 代码理解任务流(实测)|search_code(auth)->read 相关文件->梳理调用链->生成 Markdown->输出文件引用|note=验收:输出含模块说明+文件路径引用|Lab3 标准任务
+
 #PAGE 任务二:测试生成与修复
 • 定位函数 → 分析既有测试
 • → 编写新测试 → 执行
 • → 读失败日志 → 修正
 • → 输出变更说明
 >>典型的多轮纠错循环
+#FLOW 测试修复循环(多轮纠错)|定位函数->分析既有测试->编写新测试->执行 run_test->读失败日志->修正代码->再执行通过|loop=4|典型多轮 Loop:平均 2-3 轮收敛
+
 #PAGE 应用:从岗位任务拆能力
 • 开发岗:代码工具+项目记忆
 • QA 岗:测试工具+失败分析

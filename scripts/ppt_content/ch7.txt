@@ -12,6 +12,8 @@ Capstone 指引
 • 九条架构线贯穿全课程知识点
 • 学会读源码=学会二次开发
 >>对照本平台,每条线都有回声
+#GRID DeerFlow 九条架构线|① 请求入口:run 托管;② 智能体工厂:配置→图;③ 工具装配:动态子集;④ 中间件 I:上下文准备;⑤ 中间件 II:输出门控;⑥ 沙箱:执行边界;⑦ 子代理:受限委托;⑧ 技能:经验资产化;⑨ 持久化:恢复/查询/审计|cols=3|每条线在平台都有对应实现
+
 #PAGE 架构线①:请求入口
 • 用户输入如何被托管成 run
 • 可观察:run 全程有 ID 有 Trace
@@ -61,6 +63,8 @@ Capstone 指引
 • 沙箱/子代理/技能横向支撑
 • 持久化纵向兜底
 >>画一遍,胜过读十遍
+#TABLE DeerFlow 线↔平台模块,DeerFlow 架构线,平台对应,章节;① 请求入口,AgentRun+GraphQL,M3;③ 工具装配,Registry.discover,M2;⑤ 输出门控,Schema 校验+反喂,M1;⑥ 沙箱系统,LocalSandbox,M3;⑧ 技能系统,SkillRegistry,M5;⑨ 持久化,Checkpoint+AuditBus,M3/M6|hl=1|读源码能力=二次开发能力
+
 #PAGE 应用:DeerFlow 部署走查
 • 环境/依赖/模型接入
 • 跑通第一个研究任务
@@ -147,6 +151,8 @@ Q3 二次开发如何避免升级冲突?
 • 研究从数天缩短到数小时
 • 核心:Skill 沉淀方法论
 >>Capstone A 的完整蓝图
+#ARCH 深度研究平台蓝图|主导 Agent:接题/拆解/编排;资料组:多源搜集(检索 Worker);验证组:交叉核对(证据 Worker);产出:Markdown 报告+证据链|flow=拆解,并行,成文|examples/capstone/deep_research 已可运行
+
 #PAGE 研究平台的角色分工
 • 主导 Agent:接题/拆解/编排
 • 资料组:多源搜集(搜索/库/Wiki)
@@ -187,6 +193,8 @@ Q3 二次开发如何避免升级冲突?
 • 端到端自动化开发流水线
 • 核心:多角色 Agent 协作
 >>Capstone B 的完整蓝图
+#SEQ 软件工厂流水线|PM Agent,架构师,开发 Agent,QA Agent |0->1:任务包(八要素);1->2:结构决策(选技能);2->3:Loop 产出变更;3->0:Eval 验收(100% 方可 done);0->0:PR→CI→合并(GitHub Channel)|四角色职责边界=委托八要素
+
 #PAGE 软件工厂的角色矩阵
 • 产品经理 Agent:需求分析/验收标准
 • 架构师 Agent:方案/模块划分
@@ -204,6 +212,8 @@ Q3 二次开发如何避免升级冲突?
 • 开发走 Loop 产出变更
 • QA 跑 Eval 验收
 >>平台 factory.py 已可运行
+#FLOW PR 交付流水线(实测)|create_branch->commit_file->create_pull_request->CI 检查->merge->delete_branch|note=平台 GitHubChannel 自举创建 PR#1/#2 并合并|DevOps 真实集成
+
 #PAGE ACP 本地工具集成
 • 本地构建/环境配置/命令执行
 • 跨平台任务编排
@@ -217,6 +227,8 @@ Q3 二次开发如何避免升级冲突?
 • 质量守门:CI+QA Agent 双闸
 • 人工确认:高危变更前置
 >>用数字讲故事
+#TERM GitHubChannel 真实输出|$ await ship_change("工单中心", note, branch, path);branch created: agent/live-verify-20261003;commit 8ed8ffe8 pushed;PR #1 OPEN → MERGED;PR #2 OPEN → MERGED;# 分支→提交→PR→合并 全链路真实 GitHub;# 远端:gh pr list → 2 MERGED|2026-10-03
+
 #PAGE 踩坑:全自动的幻觉
 • 无人工把关直接合码
 • 一次事故毁掉全部信任
@@ -309,6 +321,8 @@ Q3 全自动化的边界在哪里?
 • 失败场景 → 回滚
 • 业务目标 → Eval
 >>Capstone C 的方法论
+#GRID 业务拆解七步法|SOP→Loop:流程变循环;岗位→Tool:任务变工具;知识→RAG:资产变检索;经验→Skill:方法论变资产;风险→HITL:高危变确认;失败→回滚:兜底变预案;目标→Eval:业务变指标|cols=4|Capstone C 模板核心
+
 #PAGE 产品交付指标
 • 任务完成率/人工接管率
 • 平均处理时长
@@ -317,6 +331,8 @@ Q3 全自动化的边界在哪里?
 • 满意度/业务转化率
 • 错误率/风险事件数
 >>向业务方汇报的词汇表
+#CHART hbar|研究报告产出耗时(人天)|传统人工=4.0,平台+复核=0.5|insight=数天→数小时:效率 8 倍,引用准确率≥90% 守门|答辩用真实数字
+
 #PAGE 从技术指标到业务价值
 • 成功率 95% → 少 5% 人工工单
 • 单任务成本降 70% → 年省 XX 万
@@ -327,6 +343,8 @@ Q3 全自动化的边界在哪里?
 • 统一模型调用服务:多供应商/成本留痕
 • 工具运行时:权限/审计/降级
 >>面试官 30 秒想看到的东西
+#PYRAMID 作品集表达三层|数据层:成功率/成本/延迟(最硬);故事层:一次故障完整处置;架构层:权衡取舍(资深感)|30 秒让面试官看到价值
+
 #PAGE 作品集:Tool Runtime 叙事
 • 讲治理,不是讲调 API
 • 三级风险+人工确认+审计脱敏
@@ -377,6 +395,8 @@ Q3 全自动化的边界在哪里?
 • B 软件工厂 MVP:四角色+GitHub Channel
 • C 自选业务:七步拆解完整落地
 >>骨架已在 examples/capstone/
+#TABLE Capstone 对照,案例,复用组件,答辩重点;A 深度研究,Supervisor+RAG+Skill,证据链完整;B 软件工厂,四角色+GitHub Channel,PR 真实闭环;C 自选业务,七步模板,业务价值数据|hl=2|examples/capstone/ 骨架可运行
+
 #PAGE Capstone 答辩标准
 • 功能:核心流程可演示
 • 质量:测试+评测数据
@@ -415,6 +435,8 @@ Q3 全自动化的边界在哪里?
 • Situation-Task-Action-Result
 • 每个作品准备 3 分钟版本
 >>数字放 Result
+#GRID STAR 面试叙事|Situation:业务背景一句话;Task:你的职责边界;Action:架构决策+为什么;Result:数字化结果|cols=4|每个作品 3 分钟版
+
 #PAGE 常见追问与应对
 • "失败率多少?"→如实+如何降低
 • "成本多少?"→分摊数据

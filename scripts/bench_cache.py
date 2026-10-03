@@ -119,6 +119,5 @@ def bench_semantic() -> None:
     assert sem_rate > exact_rate, "语义层必须带来正收益"
 
 
-
 if __name__ == "__main__":
     main()

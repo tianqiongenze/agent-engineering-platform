@@ -14,6 +14,8 @@ Lab2 验收清单
 • 目标:让模型安全地"用手干活"
 • 三层:机制(FC)/治理(Runtime)/协议(MCP)
 • 对应工程:src/agent_platform/tools/
+#ARCH Tool Runtime 全景|注册:Tool Registry,元数据,版本,启停;执行:权限,Schema 校验,超时,重试;审计:InMemory,Pulsar 适配(降级),哈希链;外部:MCP Client,文件/DB/GitHub|flow=注册,治理,审计
+
 #PAGE Function Calling 是什么
 • 模型不执行任何代码
 • 只输出"我想调 toolX,参数是{...}"
@@ -32,6 +34,8 @@ Lab2 验收清单
 • 返回/错误结构约定
 • 权限等级 + 风险等级
 >>描述写不好,模型就选错工具
+#GRID 工具契约七要素|name:动词化唯一名;description:给模型看的说明书;parameters:JSON Schema;返回结构:Output Schema;错误结构:Error Schema;权限等级:READ/WRITE/DANGEROUS|cols=3
+
 #PAGE 三份契约:Input/Output/Error
 • Input Schema:参数合法性
 • Output Schema:结果可消费
@@ -52,6 +56,8 @@ Lab2 验收清单
 • 超时/重试/降级/恢复
 • Trace 全链路留痕
 >>第2章代码就是这张图
+#FLOW ToolExecutor 六步管线|取 Spec->enabled 检查->权限判定->参数校验->超时执行(wait_for)->审计落盘(脱敏)|note=任一步失败都有结构化出口,绝不静默|源码:tools/runtime.py
+
 #PAGE 应用:天气查询工具
 • name=get_weather
 • 参数:city(string,必填)
@@ -99,6 +105,8 @@ Q4 并行调用的前提条件是什么?
 • 工具的"应用商店"后端
 • 注册/发现/元数据/分类/版本/启停
 • 模型看到的工具清单从这里出
+#GRID Registry 六项能力|注册:register(spec,fn);发现:关键词检索 discover;元数据:业务域/负责人/依赖;分类:业务/读写/风险;版本:升级走审批灰度;启停:热下线不发版|cols=3
+
 #PAGE 注册:一行代码的仪式
 • register(spec, fn) 收录
 • 重名即冲突,防误覆盖
@@ -124,6 +132,8 @@ Q4 并行调用的前提条件是什么?
 • 兼容旧参数一个周期
 • 灰度:新旧版本并存按流量切
 >>平台 SkillRegistry 同思路
+#TIMELINE 工具版本生命周期|注册:Schema+实现绑定;上架:审批+文档;灰度:10% 流量验证;全量:健康分达标;下线:一键热禁用|平台 disable() 已实现
+
 #PAGE 依赖声明
 • 该工具依赖哪些服务/密钥/DB
 • 启动时健康检查依赖
@@ -220,11 +230,15 @@ Q4 你如何验证工具描述改好了?
 • agent:READ + WRITE
 • admin:全部(含 DANGEROUS)
 >>身份透传:用户权限决定工具权限
+#TABLE RBAC 风险矩阵,角色,READ 工具,WRITE 工具,DANGEROUS 工具;readonly,✓,✗,✗;agent,✓,✓,需确认凭据;admin,✓,✓,需确认凭据|hl=3|实测:readonly 调高危 → PermissionDeniedError
+
 #PAGE 高危工具:确认凭据制
 • DANGEROUS 一律拒 readonly
 • 执行必须带 confirmed=True
 • 平台 drop_database 演示拦截
 >>无确认执行=安全事故
+#STATE 工具调用状态|PENDING,PERMIT_OK,EXECUTING,AUDITED,REJECTED,TIMEOUT;PENDING->PERMIT_OK:权限通过;PERMIT_OK->EXECUTING:wait_for 执行;EXECUTING->AUDITED:结果落审计;EXECUTING->TIMEOUT:超时降级;PENDING->REJECTED:readonly/未确认|
+
 #PAGE 工具白名单
 • 场景级白名单:客服场景只开放查询
 • 白名单外静默拒绝+审计
@@ -253,11 +267,15 @@ Q4 你如何验证工具描述改好了?
 • 权限判定结果与耗时
 • 成功失败/重试次数
 • run_id 串起全链路
+#TERM 审计事件实测(JSON)|$ executor.execute("query_user", {"api_key":"sk-xxx","q":"joel"});AuditEvent(event_id="e1", run_id="r6", tool="query_user",args={"api_key": "***MASKED***", "q": "joel"}, ok=True);# mask_args 声明的字段在审计层统一脱敏;# meta.chain_hash 哈希链防篡改(v1.3)|InMemoryAuditBus 真实输出
+
 #PAGE 敏感数据脱敏
 • mask_args 集合声明敏感字段
 • 值替换 ***MASKED***
 • 平台实测:api_key 不落日志
 >>生产红线:PII/Key 永不落盘
+#METRICS 审计安全三道数字|100%^高危拦截率^实测;0^密钥泄露^审计日志;8^脱敏字段^mask_args 机制|+哈希链防篡改(v1.3)
+
 #PAGE 超时与失败恢复
 • wait_for 硬超时,防挂死
 • 失败返回结构化 error
@@ -298,6 +316,8 @@ Q4 脱敏应该在哪一层做?
 • 连接模型与外部工具/资源的标准协议
 • Client/Server 架构
 • Anthropic 开源,已成行业趋势
+#SEQ MCP 调用时序|Agent,MCP Client,MCP Server,外部资源 |0->1:发现工具清单;1->2:tools/call(参数);2->3:执行(受白名单约束);3->2:结果+元数据;2->1:结构化返回;1->0:观察回灌|三层权限:Server/工具/参数
+
 #PAGE FC 与 MCP 的分工
 • Function Calling:模型怎么选工具
 • MCP:工具怎么标准化接入
@@ -313,6 +333,8 @@ Q4 脱敏应该在哪一层做?
 • 标准化:一次接入处处可用
 • 会话化:连接复用与状态
 >>更适合 Agent 的动态场景
+#ARCH MCP 生态接入层|Agent 运行时:Loop+Decider;MCP Client:发现,调用,连接池;MCP Server 群:文件系统,数据库,GitHub,内部 API;治理:白名单,审计,脱敏|flow=发现,调用,治理
+
 #PAGE 架构位置:防腐层
 • MCP Client 藏在 Runtime 后面
 • 上层不感知 Server 差异
