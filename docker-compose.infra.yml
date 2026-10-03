@@ -5,7 +5,7 @@ name: agent-platform-infra
 services:
   # ── PostgreSQL 主从(读写分离)────────────────────────────
   pg-primary:
-    image: postgres:16-alpine
+    image: docker.1ms.run/library/postgres:16-alpine  # 镜像源直连(网络受限环境)
     container_name: ap-pg-primary
     environment:
       POSTGRES_USER: agent
@@ -19,11 +19,14 @@ services:
       - max_wal_senders=10
       - -c
       - hot_standby=on
+      - -c
+      - hba_file=/etc/postgresql/pg_hba.conf
     ports:
       - "5432:5432"
     volumes:
       - pg_primary_data:/var/lib/postgresql/data
       - ./infra/pg/init-primary.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
+      - ./infra/pg/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U agent -d agent_platform"]
       interval: 5s
@@ -31,7 +34,7 @@ services:
       retries: 20
 
   pg-replica:
-    image: postgres:16-alpine
+    image: docker.1ms.run/library/postgres:16-alpine  # 镜像源直连(网络受限环境)
     container_name: ap-pg-replica
     depends_on:
       pg-primary:
@@ -50,7 +53,7 @@ services:
       - ./infra/pg/replica-entrypoint.sh:/replica-entrypoint.sh:ro
       - pg_replica_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U agent && psql -U agent -tAc \"SELECT pg_is_in_recovery()\" | grep -q t"]
+      test: ["CMD-SHELL", "psql -U agent -d agent_platform -tAc \"SELECT pg_is_in_recovery()\" | grep -q t"]
       interval: 10s
       timeout: 5s
       retries: 30
@@ -72,7 +75,7 @@ services:
 
   # ── Pulsar(事件骨干:领域事件/审计/Outbox 投递/DLQ)──────
   pulsar:
-    image: apachepulsar/pulsar:4.0.2
+    image: apachepulsar/pulsar:3.3.0
     container_name: ap-pulsar
     command: bin/pulsar standalone
     ports:

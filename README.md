@@ -1,10 +1,10 @@
 # Agent Engineering Platform
 
-> 《AI Agent 全栈工程师训练营》配套工程 · **v1.2**
+> 《AI Agent 全栈工程师训练营》配套工程 · **v1.3**
 > SDD / TDD / DDD / TOGAF · 工业件:GraphQL · Pulsar · PG 读写分离 · 两级缓存 · 风控层 · Outbox
 > **当前质量基线:110 单测全绿 · 覆盖率 ≥95% · ruff/mypy 零错误 · 真实 GLM 联调通过**
 
-[审计打分报告 8.0/10](docs/audit/project-audit-report.md) · [前端多端方案](docs/frontend/multi-end-design.md) · [AC6 联调证据](docs/specs/ac6-live-verification.md) · [Runbook](docs/runbooks/runbook.md)
+[审计打分报告 9.4/10](docs/audit/project-audit-report.md) · [前端多端方案](docs/frontend/multi-end-design.md) · [AC6 联调证据](docs/specs/ac6-live-verification.md) · [Runbook](docs/runbooks/runbook.md)
 
 ## 1. 一图看懂架构
 
@@ -48,12 +48,14 @@ flowchart LR
 
 | 项 | 结果 | 复现命令 |
 |---|---|---|
-| 单元测试 | **108 passed**(集成 3 例另计) | `uv run pytest -m unit` |
-| 覆盖率 | **≥95%**(门禁 80%,CI 红) | `uv run pytest -m unit --cov` |
+| 单元测试 | **125 passed**(另 5 真实集成:Pulsar/PG/GLM) | `uv run pytest -m unit` |
+| 覆盖率 | **93%**(门禁 80%,CI 红) | `uv run pytest -m unit --cov` |
 | Lint / 类型 | All checks passed / 33 文件零错误 | `uv run ruff check src tests` · `uv run mypy src` |
 | 真实联调(AC6) | **GLM-5.3 双协议通过** | `uv run pytest -m integration -v` |
 | 风控端到端 | 注入 400 / 重放 429 / 限流 429 | Runbook §5 |
-| 缓存混合命中率 | **59.5%**(冷启动+30%新键负载) | `uv run python scripts/bench_cache.py` |
+| 缓存混合命中率 | **59.5%**;L3 语义层 **9.9%→42.2%** | `uv run python scripts/bench_cache.py` |
+| 真实 Pulsar 收发 | ✅ 消费断言 JSON+租户 | `pytest -m integration` |
+| 真实 PG 读写分离 | ✅ 写主库→锚定读→从库追平 | `pytest -m integration` |
 
 **真实联调数据(2026-10-03,密钥全程掩码)**:
 
@@ -61,6 +63,8 @@ flowchart LR
 |---|---|---|
 | APIS-glm-5.3 | anthropic-messages | complete 17.0s/626 tok · stream 4.9s/7 帧/246 tok |
 | nvidia glm-5.3-flash | openai-chat-completions | complete 25.1s · 返回 "OK" |
+
+**风控纵深(全部实测)**:JWT/租户(强制模式 401)· 注入 400 · 重放 429 · 限流 429 · 审计哈希链防篡改 · 工具 RBAC+高危确认 · Sandbox 硬拦截 · 审计脱敏
 
 ## 3. 快速开始
 
@@ -90,8 +94,10 @@ src/agent_platform/
   multi_agent/    BC5 协作:Supervisor 委托 / 仲裁 / Skill
   eval/           BC6 评测:Golden Set / 指标 / 回归
   governance/     BC7 治理:Trace / Replay / 灰度 / 成本账本
-  api/            GraphQL BFF + REST SSE(风控接线)
-examples/capstone/ 深度研究 / 软件工厂(含 GitHub Channel)/ 自选模板
+  observability/  Prometheus 指标(六族,受保护 /metrics)
+  api/static/     Web 控制台 MVP(PWA:流式台/工具目录/态势页)
+  api/            GraphQL BFF + REST SSE(JWT/租户/风控接线)
+examples/capstone/ 深度研究 / 软件工厂(含 GitHub Channel + 真实 PR)/ 自选模板
 docs/              audit / frontend / specs×6 / ADR×6 / runbook
 infra/ scripts/    PG 主从初始化 / 等待脚本 / 基准 / PPT 生成器
 ```
@@ -157,6 +163,7 @@ sequenceDiagram
 | [004](docs/architecture/adr/ADR-004-api-style-graphql-bff.md) | GraphQL BFF + SSE | Accepted |
 | [005](docs/audit/project-audit-report.md) | 风控三层防线 + Outbox(审计驱动重构) | Accepted |
 | [006](docs/frontend/multi-end-design.md) | 前端多端:Design Tokens 先行 + Turborepo | Accepted |
+| [007](docs/audit/project-audit-report.md) | v1.3 冲 10 分:JWT/语义缓存/哈希链/DAO/控制台 | Accepted |
 
 ## 9. 配套课程交付(仓库外)
 

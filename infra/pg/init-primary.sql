@@ -17,3 +17,7 @@ INSERT INTO platform_meta(key, value) VALUES
     ('schema_role', 'primary'),
     ('initialized_at', now())
 ON CONFLICT (key) DO NOTHING;
+
+-- 流复制 HBA:允许 replicator 从任意容器网段发起复制连接
+-- (docker-entrypoint 首次初始化时执行;pg_hba 追加需在数据目录就绪后)
+-- 通过 shell 无法在此阶段改 pg_hba;改由 command 参数注入:

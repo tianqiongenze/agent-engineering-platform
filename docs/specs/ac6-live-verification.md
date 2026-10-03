@@ -2,6 +2,6 @@
 
 | 记录 |
 |---|
-| APIS-glm-5.3 complete | 16981ms | tokens=626 | chars=78 |
-| APIS-glm-5.3 stream | 4851ms | chunks=7 | tokens=246 |
-| nvidia/glm-5.3-flash complete | 25062ms | tokens=131 | chars=2 |
+| APIS-glm-5.3 complete | 9929ms | tokens=549 | chars=70 |
+| APIS-glm-5.3 stream | 3452ms | chunks=3 | tokens=240 |
+| nvidia/glm-5.3-flash complete | 11413ms | tokens=112 | chars=2 |

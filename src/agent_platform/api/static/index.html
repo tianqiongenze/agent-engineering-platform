@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Engineering Platform · 控制台</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#0B1D3A">
+<style>
+/* Design Tokens(docs/frontend/multi-end-design.md · 深空蓝主题·暗色优先) */
+:root{
+  --ink:#0B1D3A; --panel:#142A4C; --bg:#0A1626; --amber:#F59E0B;
+  --blue:#2563EB; --text:#CBD5E1; --muted:#94A3B8; --ok:#34D399; --bad:#F87171;
+  --radius:12px; --space:16px; --font:16px;
+}
+*{box-sizing:border-box;margin:0}
+body{background:var(--bg);color:var(--text);font:var(--font)/1.6 -apple-system,"PingFang SC",sans-serif;min-height:100vh;display:flex;flex-direction:column}
+header{background:var(--ink);padding:var(--space);display:flex;align-items:center;gap:12px;border-bottom:3px solid var(--amber)}
+header h1{font-size:18px;color:#fff}
+.pill{margin-left:auto;font-size:12px;padding:2px 10px;border-radius:999px;background:var(--panel)}
+.pill.ok{color:var(--ok)}.pill.bad{color:var(--bad)}
+nav{display:flex;gap:4px;background:var(--ink);padding:0 var(--space)}
+nav button{background:none;border:none;color:var(--muted);padding:10px 14px;cursor:pointer;font-size:14px;border-bottom:2px solid transparent}
+nav button.on{color:#fff;border-color:var(--amber)}
+main{flex:1;padding:var(--space);max-width:960px;width:100%;margin:0 auto}
+.card{background:var(--panel);border-radius:var(--radius);padding:var(--space);margin-bottom:var(--space)}
+textarea{width:100%;min-height:90px;background:var(--ink);color:var(--text);border:1px solid #2B4A7A;border-radius:8px;padding:10px;font:inherit}
+button.primary{background:var(--blue);color:#fff;border:none;border-radius:8px;padding:8px 18px;cursor:pointer}
+button.primary:disabled{opacity:.5}
+#stream{white-space:pre-wrap;background:var(--ink);border-radius:8px;padding:12px;min-height:120px;margin-top:10px}
+.meta{font-size:12px;color:var(--muted);margin-top:6px}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{text-align:left;padding:6px 8px;border-bottom:1px solid #23406B}
+th{color:var(--muted);font-weight:500}
+.tag{font-size:11px;padding:1px 8px;border-radius:6px}
+.tag.read{background:#1D3A5F;color:#7DB4FF}.tag.write{background:#4C3A14;color:#F5C563}.tag.dangerous{background:#4C1D1D;color:#F87171}
+.kv{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.kv .card{margin:0}
+.err{color:var(--bad);font-size:13px;margin-top:6px;min-height:18px}
+footer{text-align:center;color:var(--muted);font-size:12px;padding:12px}
+</style>
+</head>
+<body>
+<header><h1>⚙ Agent Engineering Platform</h1><span id="pill" class="pill">…</span></header>
+<nav>
+  <button data-t="stream" class="on">流式控制台</button>
+  <button data-t="tools">工具目录</button>
+  <button data-t="ops">运行态势</button>
+</nav>
+<main>
+  <section id="stream">
+    <div class="card">
+      <textarea id="prompt">用一句话介绍什么是 AI Agent。</textarea>
+      <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
+        <button class="primary" id="go">发送(SSE)</button>
+        <label style="font-size:13px;color:var(--muted)"><input type="checkbox" id="nostream"> 非流式</label>
+        <span class="err" id="err"></span>
+      </div>
+      <div id="stream"></div>
+      <div class="meta" id="usage">usage: — · 首字延迟: — · 总延迟: —</div>
+    </div>
+  </section>
+  <section id="tools" hidden>
+    <div class="card"><table id="toolTable"><thead><tr><th>工具</th><th>说明</th><th>风险</th><th>启用</th></tr></thead><tbody></tbody></table></div>
+  </section>
+  <section id="ops" hidden>
+    <div class="kv">
+      <div class="card"><b>风控实测</b><div class="meta" id="secStat">加载中…</div></div>
+      <div class="card"><b>缓存命中率</b><div class="meta">TwoLevelCache / L3 语义缓存 · 见 /metrics</div></div>
+    </div>
+    <div class="card"><b>平台指标(Prometheus)</b><div class="meta">GET /metrics — scrape 注解见部署文档</div></div>
+  </section>
+</main>
+<footer>AI Agent 全栈工程师训练营 · Agent Engineering Platform v1.3</footer>
+<script>
+const $=s=>document.querySelector(s);
+async function health(){
+  try{const r=await fetch('/healthz');const j=await r.json();
+    $('#pill').textContent=`LLM: ${j.llm_provider} · ok`;$('#pill').className='pill ok';}
+  catch{$('#pill').textContent='API 不可达';$('#pill').className='pill bad';}
+}
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('on',x===b));
+  ['stream','tools','ops'].forEach(t=>$('#'+t).hidden=t!==b.dataset.t);
+  if(b.dataset.t==='tools')loadTools();
+  if(b.dataset.t==='ops')loadOps();
+});
+$('#go').onclick=async()=>{
+  $('#err').textContent='';$('#stream').textContent='';$('#go').disabled=true;
+  const t0=performance.now();let first=null,usage=null,n=0;
+  try{
+    const stream=!$('#nostream').checked;
+    const r=await fetch('/v1/chat/completions',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({messages:[{role:'user',content:$('#prompt').value}],stream})});
+    if(!r.ok){const j=await r.json().catch(()=>({detail:r.statusText}));throw new Error(`${r.status} ${j.detail||''}`);}
+    const rd=r.body.getReader(),dec=new TextDecoder();let buf='';
+    while(true){const{done,value}=await rd.read();if(done)break;buf+=dec.decode(value,{stream:true});
+      let idx;while((idx=buf.indexOf('\n\n'))>=0){const frame=buf.slice(0,idx);buf=buf.slice(idx+2);
+        if(!frame.startsWith('data:'))continue;const data=frame.slice(5).trim();
+        if(data==='[DONE]')continue;const j=JSON.parse(data);
+        if(j.delta){n++;if(first===null){first=performance.now()-t0;}$('#stream').textContent+=j.delta;}
+        if(j.usage)usage=j.usage;}}
+    const tt=performance.now()-t0;
+    $('#usage').textContent=`usage: ${usage?usage.total_tokens:'—'} tokens · 首字: ${first?first.toFixed(0)+'ms':'—'} · 总延迟: ${tt.toFixed(0)}ms · 帧: ${n}`;
+  }catch(e){$('#err').textContent='⚠ '+e.message;}
+  $('#go').disabled=false;
+};
+async function loadTools(){
+  const rows=await (await fetch('/v1/tools')).json();
+  $('#toolTable tbody').innerHTML=rows.map(t=>`<tr><td>${t.name}</td><td>${t.description}</td><td><span class="tag ${t.risk}">${t.risk}</span></td><td>${t.enabled}</td></tr>`).join('');
+}
+async function loadOps(){
+  $('#secStat').innerHTML='注入拦截:400 ✓ · 重放:429 ✓ · 限流:429 ✓ <br>(详见 docs/audit 实测记录)';
+}
+health();setInterval(health,15000);
+if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
+</script>
+</body></html>

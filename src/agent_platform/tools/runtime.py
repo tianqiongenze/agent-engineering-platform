@@ -68,6 +68,7 @@ class AuditEvent(BaseModel):
     ok: bool
     error: str | None = None
     latency_ms: float = 0.0
+    meta: dict[str, str] = {}  # 扩展位(租户/链式哈希等)
 
 
 class AuditBus(Protocol):
@@ -154,6 +155,10 @@ class ToolRegistry:
 
     def is_enabled(self, name: str) -> bool:
         return name not in self._disabled and self.get(name).enabled
+
+    def all_specs(self) -> list[ToolSpec]:
+        """全部工具 spec(管理面用;调用仍走 Executor 权限管线)。"""
+        return [spec for spec, _ in self._tools.values()]
 
     def get_fn(self, name: str) -> ToolFn:
         """受控取执行函数(教学:避免外部直达私有字典)。"""

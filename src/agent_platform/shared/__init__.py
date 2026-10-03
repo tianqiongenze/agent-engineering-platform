@@ -10,6 +10,7 @@ from agent_platform.shared.outbox import (
     OutboxStore,
     PublishError,
 )
+from agent_platform.shared.semantic_cache import SemanticCache
 
 __all__ = [
     "CacheStats",
@@ -21,5 +22,6 @@ __all__ = [
     "OutboxStore",
     "PublishError",
     "ReadWriteRouter",
+    "SemanticCache",
     "TwoLevelCache",
 ]
