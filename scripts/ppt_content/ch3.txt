@@ -20,6 +20,8 @@ Lab3 验收清单
 • Observe:看结果再想下一步
 • 循环直到任务完成
 >>Agent Loop 的思想源头
+#SEQ ReAct 一轮时序|Decider,Executor,观察区 |0->1:Reason(我要查鉴权);1->0:Act(search_code);0->2:结果入观察区;2->0:Observe 回灌;0->0:下一轮 Think 或 finalize|思考可追溯:每轮留痕
+
 #PAGE Plan-and-Execute 模式
 • 先出完整计划,再逐步执行
 • 优点:全局视角,成本可控
@@ -57,6 +59,8 @@ Lab3 验收清单
 • → 生成结论 → 引用核对
 • 每步都是一次工具调用
 >>第5章 Multi-Agent 会并行化它
+#FLOW 研究任务五步流|搜资料->读报告->交叉验证->生成结论->引用核对|note=每步都是一次工具调用+观察回灌|平均 3~5 轮收敛
+
 #PAGE 应用:数据修复流水线
 • 扫描异常数据 → 定位原因
 • → 生成修复 SQL → 审核
@@ -71,6 +75,8 @@ Lab3 验收清单
 • 两轮就超窗
 • 优化:观察压缩与摘要
 >>第4章 Context 工程系统解决
+#METRICS 观察压缩实测|20^条^原始观察;6^条^压缩后保留;70%^降幅^FitReport 实测|头尾保留/中段折叠摘要
+
 #PAGE 踩坑:假完成
 • 模型提前 finish,任务没做完
 • 缓解:完成定义进 Prompt
@@ -140,6 +146,8 @@ Q4 循环预算怎么定?
 >>过度规划是常见反模式
 #PYRAMID Planning 三级策略|动态计划:执行中重估,成本高;一次性计划:目标明确步骤稳;无 Planner:两步内直接做|自顶向下按复杂度选
 
+#GRID 两种计划模式对比|一次性:开始出全清单,稳任务省 Token;动态:每步重估,探索型适应强;共同:修订留痕+偏差处理;取舍:确定性 vs 灵活性|cols=2|按任务稳定性选
+
 #PAGE 一次性计划
 • 开始时产出完整步骤清单
 • 适合:目标明确、步骤稳定
@@ -155,11 +163,15 @@ Q4 循环预算怎么定?
 • 触发:工具结果与预期偏离
 • 修订要留痕:为什么改
 >>计划是文档,不是契约
+#FLOW 动态计划循环->生成计划->执行一步->校验偏差->偏离?->是:修订计划->继续->完成|loop=2|note=修订留痕:为什么改|计划是文档不是契约
+
 #PAGE 子目标拆解
 • 大目标 → 里程碑 → 步骤
 • 每个子目标可独立验证
 • 依赖关系显式声明
 >>拆解质量决定执行质量
+#GRID 拆解三层结构|目标:业务北极星;里程碑:可独立验证;步骤:原子动作+依赖|cols=3|拆解质量决定执行质量
+
 #PAGE 步骤依赖建模
 • 串行:前步输出是后步输入
 • 并行:独立步骤同时发
@@ -170,6 +182,8 @@ Q4 循环预算怎么定?
 • 合规要求每步可审计
 • 高频高频次:Workflow 更省钱
 >>能用 Workflow 就别上 Agent
+#TABLE Workflow vs Agent Loop,维度,Workflow,Agent Loop;路径,预定义固定,运行时决定;成本,低且可预测,Token 消耗高;可审计,每步天然,需 Trace;适用,稳定流程,探索任务|hl=2|能用 Workflow 就别上 Loop
+
 #PAGE 何时用 Agent Loop
 • 步骤依赖中间结果决定
 • 存在分支与异常路径
@@ -180,6 +194,8 @@ Q4 循环预算怎么定?
 • 测试不过:回到计划修订
 • 上下文变化:触发重规划
 >>偏差处理逻辑要显式写
+#GRID 偏差处理四策略|工具失败:重试/换路;测试不过:回计划修订;上下文变化:重规划;目标变化:终止重启|cols=2|偏差处理逻辑显式写
+
 #PAGE 应用:发版排障 SOP
 • SOP:看监控→查日志→定位→修复
 • Agent 化:每步映射工具
@@ -231,11 +247,15 @@ Q4 计划缓存的前提是什么?
 • running→waiting_tool:发起调用
 • waiting_tool→running/tool_failed
 • 任何态→cancelled:用户取消
+#STATE 审批分支补充图|running,waiting_approval,completed,cancelled;running->waiting_approval:高危动作;waiting_approval->running:approved;waiting_approval->cancelled:拒绝/超时;running->completed:finish|HITL 的一等公民态
+
 #PAGE 步骤状态:细粒度记录
 • 当前步骤/工具名/输入参数
 • 工具输出/失败原因
 • 重试记录/下一步决策
 >>排查问题的第一手材料
+#GRID Checkpoint 内容四件|状态:当前 AgentState;步骤:工具+参数+输出;观察:obs_history 全量;计划:版本+修订记录|cols=2|最小集:够恢复就行
+
 #PAGE Checkpoint:什么必须存
 • 任务状态+目标+run_id
 • 已执行步骤与观察历史
@@ -253,6 +273,8 @@ Q4 计划缓存的前提是什么?
 • 重启后 resume_from 加载
 • 从最后观察点继续
 >>平台测试:test_checkpoint_resumes
+#TERM kill/resume 演示实录,$ kill -9 <agent-pid>  # 模拟崩溃;进程消失,Checkpoint 已落盘;$ loop2 = AgentLoop(resume_from=run_id);COMPLETED  历史观察完整带回;# 每轮 save(深拷贝)是底气|tests 真实复现
+
 #PAGE 失败任务复现
 • 失败时保存完整现场
 • Replay:同输入重执行
@@ -263,11 +285,15 @@ Q4 计划缓存的前提是什么?
 • 人工批准/修改参数
 • 从确认点继续执行
 >>确认记录进审计
+#SEQ 人工接管时序|Agent,控制台,人工 |0->1:waiting_approval;1->2:展示上下文+风险;2->1:修改参数/批准;1->0:从确认点续跑;1->0:拒绝→cancelled|接管记录进审计
+
 #PAGE 应用:长任务控制台
 • 任务列表:状态/进度/耗时
 • 详情:步骤时间线
 • 操作:取消/接管/重试
 >>GraphQL 查询面的典型消费方
+#ARCH 任务控制台信息架构|列表页:状态/进度/耗时/租户;详情页:步骤时间线+观察流;操作区:取消/接管/重试/确认;数据面:GraphQL 查询+Trace|flow=查询,下钻,操作|GraphQL BFF 的典型消费方
+
 #PAGE 踩坑:状态与缓存不一致
 • Redis 缓存状态,PG 是事实源
 • 缓存过期读旧态
@@ -309,6 +335,8 @@ Q4 为什么每轮都要落盘?
 • allowed_roots 与 writable_roots 分离
 • 默认拒绝,显式授权
 >>读≠写,最小权限原则
+#TERM 路径逃逸攻防实测,$ sandbox.check_read("repo/../../etc/passwd");SandboxViolation: read denied (realpath 归一后判定);$ ln -s /etc/passwd evil && read evil;SandboxViolation: symlink 逃逸被拦;# realpath+resolve 后再判前缀|两连攻击全拦
+
 #PAGE Shell 边界实现
 • 命令头必须进白名单
 • 危险模式硬拦截:mkfs/rm变体/管道sh
@@ -330,6 +358,8 @@ Q4 为什么每轮都要落盘?
 • 限制:无网/只读根/资源上限
 • 临时卷交换产出物
 • 生命周期:用完即毁
+#SEQ 容器沙箱执行时序|Loop,Docker API,容器,产物卷 |0->1:create(无网/只读根);1->2:exec 命令(超时);2->3:写产物卷;3->0:收集结果;1->2:destroy(用完即毁)|资源上限+drop caps
+
 #PAGE 本地 vs 容器边界差异
 • 文件:挂载点即边界
 • 网络:容器网络策略更硬
@@ -407,6 +437,8 @@ Q4 本地与容器沙箱怎么选?
 • 节点=动作,边=流转
 • 条件边实现分支
 • Checkpointer 内置持久化
+#GRID 图对象四件套|StateGraph:状态承载;Node:动作(薄节点);Edge:流转/条件分支;Checkpointer:每步持久化|cols=2|节点薄/逻辑在域层
+
 #PAGE LangGraph 关键能力
 • Interrupt:图内人工介入
 • ToolNode:工具节点标准化
@@ -417,6 +449,8 @@ Q4 本地与容器沙箱怎么选?
 • OpenAI Agents SDK:轻量,生态绑定
 • AgentScope:多 Agent 消息范式
 >>选型:要控制力选 LangGraph
+#TABLE 编排框架对比,维度,LangGraph,OpenAI SDK,AgentScope;范式,状态图,轻量代理,消息协作;控制力,强(DIY),中,中;生态,通用,绑定 OpenAI,多Agent;适合,精细控制,快速原型,协作仿真|hl=1|要控制力选 LangGraph
+
 #PAGE 与传统 Workflow 的关系
 • Workflow:确定性流程编排
 • LangGraph:状态+LLM 决策的混合
@@ -451,6 +485,8 @@ Q4 本地与容器沙箱怎么选?
 • QA 岗:测试工具+失败分析
 • 运维岗:Shell+监控+回滚
 >>能力包=第5章 Skill 的雏形
+#GRID 岗位→能力包映射|开发岗:代码工具+项目记忆;QA 岗:测试工具+失败分析;运维岗:Shell+监控+回滚;分析岗:检索+报表生成|cols=2|能力包=Skill 的雏形
+
 #PAGE 踩坑:Harness 过度抽象
 • 为未来场景堆配置项
 • 结果:没人会用
@@ -464,6 +500,8 @@ Q4 本地与容器沙箱怎么选?
 • 测试注入 Mock 实现
 • 决策脚本化(平台 ScriptedDecider)
 >>确定性测试是平台根基
+#TERM 编排层测试实测,$ uv run pytest -m unit tests/unit/orchestration;............ 12 passed in 0.31s;# ScriptedDecider:决策脚本化;# 四条终止路径全覆盖(含死循环熔断);# 无需真实模型即可回归编排层|tests 真实输出
+
 #PAGE 本章小结
 • Loop:四出口+死循环熔断
 • Planning:按任务选策略

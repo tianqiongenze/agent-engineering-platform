@@ -22,6 +22,8 @@ Lab6 验收清单
 • 风险:供应商锁定/限流/价格变动
 • 缓解:OpenAI Compatible 抽象
 >>平台 Provider 层就是为换供应商而生
+#TABLE 三形态决策,维度,云 API,私有化,混合;起步速度,小时级,周级,折中;数据敏感,出域,完全可控,敏感在内;成本模型,按量,固定 TCO,组合;合规压力,低,高,中高|hl=3|按约束决策,不按潮流
+
 #PAGE 私有化的真实成本
 • GPU 采购或租用成本
 • 运维:vLLM 升级/故障处理
@@ -32,6 +34,8 @@ Lab6 验收清单
 • Continuous Batching:吞吐数倍提升
 • OpenAI 兼容接口开箱即用
 >>换到 vLLM,平台代码零改动
+#GRID vLLM 三件套|PagedAttention:显存分页管理;Continuous Batching:随到随插队;OpenAI 兼容:换引擎零改码|cols=3|同卡并发数倍提升
+
 #PAGE PagedAttention 直觉理解
 • 显存当"页"管理,类似 OS 虚拟内存
 • 消除 KV Cache 预留浪费
@@ -72,10 +76,14 @@ Lab6 验收清单
 • 云端:通用问答/翻译
 • 路由按数据分类标签
 >>一套 Gateway 两类后端
+#ARCH 混合路由拓扑|入口:统一 Gateway+分类器;内网通道:合同/代码模型(vLLM);云通道:通用问答(便宜模型);策略:数据分级标签驱动|flow=分类,路由,审计|一套 Gateway 两类后端
+
 #PAGE 踩坑:显存 OOM 循环
 • max_batch_size 拍太大
 • 高峰期 OOM 重启循环
 • 治理:压测定容量+水位告警
+#TERM OOM 处置实录,现象: 高峰期 CrashLoop 反复重启;根因: max_batch_size 拍脑袋过大;处置: 压测定容量+水位告警 80%;预防: 长上下文隔离到专用实例|Runbook 标准条目
+
 #PAGE 踩坑:长上下文拖垮服务
 • 少数 128k 请求占满卡
 • 修复:长文单独路由专用实例
@@ -133,11 +141,15 @@ Q4 容量规划看哪四个指标?
 • system 稳定是前提
 • 动态内容放后段
 >>零改造成本,先开它
+#SEQ 前缀命中时序|Client,Gateway,推理服务 |0->1:请求(system 稳定);1->2:前缀 hash 查缓存;2->1:命中→跳过重算;1->2:未命中→算后写入;2->0:响应(标注 hit)|零改造成本,先开它
+
 #PAGE Semantic Cache
 • 相似问题向量匹配直接回
 • 阈值:0.92+ 高置信才命中
 • 失效:知识更新时全清
 >>命中率 30% = 三成成本蒸发
+#METRICS 语义缓存三数字|0.92^τ^相似阈值;42.2%^命中^实测;+32.3%^提升^对比仅精确|短查询(<8字)强制 bypass
+
 #PAGE Embedding 与 RAG Cache
 • 文档向量一次计算多次使用
 • 检索结果短期缓存
@@ -172,6 +184,8 @@ Q4 容量规划看哪四个指标?
 • 失败原因驱动换链
 • attempts 全留痕
 >>降级路径必须有测试
+#STATE fallback 链状态|NORMAL,PRIMARY_FAIL,FAST_FAIL,LOCAL,DRAIN;NORMAL->PRIMARY_FAIL:主模型 429/5xx;PRIMARY_FAIL->FAST_FAIL:fast 也失败;FAST_FAIL->LOCAL:回本地小模型;LOCAL->DRAIN:全部熔断→人工兜底|每级留痕+告警分级
+
 #PAGE Token Budget
 • 任务级:单任务 Token 上限
 • 用户级/租户级日预算
@@ -196,6 +210,8 @@ Q4 容量规划看哪四个指标?
 • 读:从库(报表/Trace 查询)
 • 读己之写:回主库强读
 >>平台 Compose 已配主从流复制
+#SEQ 写读一致性时序|业务,Router,主库,从库 |0->2:write_session 写主库;0->3:锚定期读(TTL 5s);3->0:TTL 过→回从库;2->3:流复制追平≤30s;0->3:报表/Trace 走从|读己之写实测通过
+
 #PAGE 成本分摊与报表
 • 按模型/工具/团队/任务分摊
 • CostLedger:元/千 Token 计价
@@ -270,6 +286,8 @@ Q4 为什么写工具不能缓存?
 • GraphQL 聚合查询
 • 失败任务一键下钻
 >>BFF 的典型消费场景
+#TERM GraphQL Trace 查询实测,query { runs(state: "failed", tenant: "acme") {;  id goal spans { name ok durationMs };}};→ 返回失败任务的 span 树;下钻: 最慢 span 一目了然;# BFF 按需取字段,避免 N+1|教学控制台同款查询
+
 #PAGE Replay 机制
 • 保存:输入/上下文/工具结果/状态
 • 复现:同输入重执行
@@ -281,6 +299,8 @@ Q4 为什么写工具不能缓存?
 • 人工接管率/满意度
 • 平均任务处理时长
 >>北极星:任务成功率
+#METRICS 四北极星指标|95%^任务成功率^SLO;5%^人工接管率^上限;70%^成本节省^缓存+路由;4.5^分^满意度|周报看趋势不看绝对值
+
 #PAGE 模型指标
 • Token 消耗/成本趋势
 • 平均延迟/P95/P99
@@ -400,6 +420,8 @@ Q4 高基数问题怎么防?
 • 知识库:快照恢复
 • 服务:镜像回退
 >>回滚演练进 Lab6
+#TABLE 回滚手段时效,对象,手段,时效;Prompt/模型,FeatureFlag 关闭,秒级;工具版本,registry 切回,分钟级;服务,镜像回退,分钟级;知识库,快照恢复,小时级|hl=2|Flag 一切:回滚先想 Flag
+
 #PAGE MCP Server 生产化清单
 • 部署/鉴权/网络隔离
 • 工具白名单/日志审计
@@ -437,6 +459,8 @@ Q4 高基数问题怎么防?
 • 指标达标→100%
 • 异常→一键回滚
 >>Lab6 实战内容
+#TIMELINE Prompt 上线五步|改动:PR+变更说明;评测:Golden 全量回归;灰度:Flag 10% 观察 24h;放量:50%→100%;回滚:指标异常一键|regressed 非空→阻断
+
 #PAGE 踩坑:Flag 清理不及时
 • 上线半年的临时开关还在
 • 组合爆炸无法测试

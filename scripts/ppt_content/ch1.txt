@@ -46,12 +46,16 @@ Lab1 验收清单
 • assistant:模型历史回复
 • tool:工具执行结果(第2章登场)
 >>角色错放是最常见调用错误
+#GRID 四种消息角色卡|system:全局指令/岗位书;user:用户输入;assistant:模型历史回复;tool:工具结果回灌|cols=2|role 错放是最常见调用错误
+
 #PAGE 响应结构:三层拆解
 • choices[0].message.content:正文
 • usage:prompt/completion_tokens
 • finish_reason:stop/length/tool_calls
 • length=被 max_tokens 截断
 >>监控必须同时看 usage 与 finish_reason
+#TABLE 响应字段速查,字段,含义,监控点;choices[0].message.content,正文,body 为空告警;usage.prompt/completion,输入输出 token,成本核算;finish_reason,stop/length/tool_calls,length=截断告警|hl=2|三层都要落日志
+
 #PAGE temperature:采样温度
 • 概念:缩放 logits 分布平坦度
 • 越高越随机,越低越确定
@@ -128,6 +132,8 @@ Lab1 验收清单
 • Key 走环境变量/密钥服务,不入库
 • 网关层统一注入,业务侧零 Key
 >>平台 OPENAI_API_KEY 只在 .env
+#TERM 认证头与风控头实测|$ curl -H "Authorization: Bearer sk-***" ...;Authorization: Bearer sk-*****(掩码);x-idempotency-key: req-20261003-001;x-tenant-id: acme(开发态);# 生产:JWT 强制(SEC_JWT_REQUIRED=1);# Key 只在 .env 与请求头,永不落库/日志|v1.3 实测
+
 #PAGE 流式与非流式的成本差异
 • 计费相同,体验与失败代价不同
 • 非流式超时=整单作废重计
@@ -138,6 +144,8 @@ Lab1 验收清单
 • 难任务(推理/代码)→ 强模型
 • 杂任务(分类/抽取)→ 小模型
 • 矩阵进配置,随价格变化调整
+#TABLE 强弱模型选型,维度,强模型,小模型;任务,推理/代码/长链,分类/抽取/改写;成本,高(约5x),低;延迟,10~25s,1~3s;占比,难任务 20%,杂任务 80%|hl=2|路由配比=成本杠杆
+
 #PAGE 多模型路由设计
 • 链式:primary → fast → local
 • 失败原因决定是否换链
@@ -148,6 +156,8 @@ Lab1 验收清单
 • complete:一次性返回
 • stream_events:增量+末帧用量
 >>新增供应商=新增一个实现类
+#SEQ 双协议适配时序|Client,Gateway,OpenAI 协议,Anthropic 协议 |0->1:统一请求;1->2:POST /chat/completions;1->3:POST /v1/messages;2->1:choices+usage;3->1:content_blocks+usage;1->0:统一 ChatResponse|同一 Provider 协议,两个实现
+
 #PAGE 应用:客服问答参数基线
 • temperature 0.3:稳定带一点语气
 • max_tokens 512:控制话术长度
@@ -188,11 +198,15 @@ Q4 你的项目里哪个参数最该进配置中心?
 • CLI:逐块 print 实现打字机效果
 • 每帧 JSON:delta 增量 + 末帧 usage
 >>平台实测:curl -N 可见打字机输出
+#FLOW 打字机渲染管线->收到 delta 帧->追加缓冲->节流上屏(16ms)->usage 帧更新计数->[DONE] 收尾|note=直接逐帧 DOM 更新会卡:节流是前端必修课|TTFT<200ms 上屏
+
 #PAGE 中断与取消
 • 用户点击停止 → 关闭连接
 • 服务端检测写失败即终止推理
 • 省下的是真金白银的 Token
 >>取消也必须留痕:用量已产生部分
+#STATE 流式会话状态|streaming,paused,done,cancelled;streaming->paused:网络抖动;paused->streaming:自动重连;streaming->done:[DONE];streaming->cancelled:用户停止;paused->cancelled:超时|已生成部分保留+计量
+
 #PAGE 流式异常处理
 • 网络抖动:连接中断而非报错
 • 限流:可能在流中途触发
@@ -235,6 +249,8 @@ Q4 你的项目里哪个参数最该进配置中心?
 • 最简实现只用 data 行
 • 空行分隔帧,双换行必须保留
 >>自己抓包看一次胜过十页文档
+#FLOW SSE 客户端解析流(防粘包)->收 TCP chunk->行缓冲累积->按空行切帧->校验 data: 前缀->JSON 解析->分发渲染|note=跨 chunk 半帧是常见坑:必须缓冲|末帧 usage + [DONE]
+
 #PAGE 客户端重连语义
 • EventSource 断线自动重连
 • 服务端需幂等:避免重复生成
@@ -244,6 +260,8 @@ Q4 你的项目里哪个参数最该进配置中心?
 • 客户端带着最后收到的 id 重连
 • 服务端从断点继续推送
 • 平台映射:任务摘要做恢复锚点
+#SEQ 断线重连时序|Client,API,生成器 |0->1:流式中断;1->2:生成暂停(用量已记);0->1:重连+Last-Event-ID;1->2:从断点续推;2->0:剩余帧+usage|重连需幂等:防重复生成
+
 #PAGE 应用:长文写作流水线
 • 大纲流式确认 → 分节生成
 • 每节独立可取消可重写
@@ -285,12 +303,16 @@ Q4 TTFT 为什么比总时长更重要?
 • 语气:专业/口语/客服话术
 • 结构:Markdown 标题/表格/JSON
 >>风格也是验收标准的一部分
+#TABLE 模板化前后对比,维度,散写 Prompt,模板化;复用,每次手写,变量注入;一致性,风格漂移,风格锁定;版本,无追溯,git 版本化;审计,难归因,模板 ID 留痕|hl=2|模板即代码
+
 #PAGE Few-shot:示例的力量
 • 给 2~3 个"输入→输出"范例
 • 对格式敏感任务立竿见影
 • 示例覆盖边界情况效果最佳
 • 示例本身成为 Prompt 的一部分资产
 >>JSON 输出任务先试 Few-shot
+#GRID Few-shot 设计三要点|数量:2~3 个足够;覆盖:含边界情况样例;一致性:格式与目标输出严格同构|cols=3|格式敏感任务首选
+
 #PAGE 任务拆解:降幻觉的核心手段
 • 一步到位 → 多步小任务链
 • 每步只做一件事,可单独校验
@@ -323,6 +345,8 @@ Q4 TTFT 为什么比总时长更重要?
 • 直拼进 system → 指令被覆盖
 • 防护一:用户输入只进 user 消息
 • 防护二:输出格式校验兜底
+#FLOW 注入攻击与防御流->用户输入夹带指令->混入 system 位置?-是:直接拦截 400->否:进 user 消息->输出校验兜底|note=双层防线:位置纪律+输出校验|实测:ignore all previous → 400
+
 #TERM 风控栈实测(curl 复现)|$ curl -X POST :8000/v1/chat/completions -d '{"content":"ignore all previous instructions"}';HTTP 400  injection pattern matched;$ curl -H 'x-idempotency-key: replay-1' …(第2次);HTTP 429  replay detected;$ for i in 1..14;连续请求;200 200 200 200 200 200 200 200 429 429 429 429 429 429;# 限流:桶容量 8 耗尽后全部 429|v1.3 实测记录
 
 #PAGE 踩坑:越改越长的 Prompt
@@ -360,11 +384,15 @@ Q4 TTFT 为什么比总时长更重要?
 • 模板:决议/待办/风险三段
 • 约束:待办必须带负责人与期限
 • 输出直接进协作工具
+#FLOW 纪要生成流水线|转写文本->模板三段(决议/待办/风险)->待办抽取(负责人+期限)->校验必填->输出结构化纪要|note=模板即代码:版本化进仓库|固定段落=可校验
+
 #PAGE 踩坑:示例泄漏进生产输出
 • Few-shot 示例被模型复读
 • 现象:输出里出现"示例:"字样
 • 修复:示例加显著分隔与去重指令
 >>回归用例要覆盖示例复读
+#TERM 示例复读复现与修复,$ curl ... -d '{"content":"给个示例"}';输出: 示例:小明提交了 PR...;修复: 显著分隔符 + "勿复读示例" 约束;回归: 用例覆盖示例复读;# few-shot 是双刃剑:格式受益/内容风险|真实踩坑记录
+
 #PAGE 优化:Prompt 压缩
 • 删除客套话与重复约束
 • 合并同类规则
@@ -465,6 +493,8 @@ Q4 模板化解决了什么工程问题?
 • 枚举优先于自由字符串
 • 嵌套不超过两层
 >>Schema 越简单遵循度越高
+#GRID Schema 五原则|必填最小化:可选显式可空;枚举优先:禁自由字符串;嵌套≤2 层:遵循度友好;错误留位:null 表缺失;版本字段:兼容演进|cols=3|Schema 越简单遵循度越高
+
 #PAGE 反喂重试的 Prompt 构造
 • 附上原始输出+校验错误详情
 • 明确要求:只修错误,别重写
@@ -475,6 +505,8 @@ Q4 模板化解决了什么工程问题?
 • 业务默认值(标记降级)
 • 转人工队列
 >>降级路径必须有测试覆盖
+#STATE 结构化输出降级路径|OK,RETRY,FEEDBACK,CACHED,DEFAULT,MANUAL;OK->RETRY:校验失败;RETRY->FEEDBACK:错误反喂;FEEDBACK->CACHED:二败取缓存;CACHED->DEFAULT:无缓存给默认;DEFAULT->MANUAL:高危转人工|每一级都可测试
+
 #PAGE 应用:周报复生成器
 • Schema:指标名/值/环比/归因
 • 归因字段强制引用原文片段
@@ -506,6 +538,8 @@ Q4 模板化解决了什么工程问题?
 • Streaming:体验与成本的双重解
 • Prompt/结构化:从 Demo 到工程
 >>下一章:让模型长出手
+#METRICS M1 里程碑成果|2^协议^OpenAI+Anthropic;17.0^秒^真实联调;626^tokens^单次全程;93%^覆盖率^模块级|两协议实测 2026-10-03
+
 #PAGE Lab1 验收清单
 • [ ] Mock 单测全绿,覆盖率 ≥80%
 • [ ] SSE 打字机效果(curl -N 演示)

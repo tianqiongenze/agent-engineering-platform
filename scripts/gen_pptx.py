@@ -267,8 +267,8 @@ def quiz_slide(prs, title, body):
     V.label(s, V._px(32), 0, W - V._px(80), bar_h, title, 20, V.INK, True, align=PP_ALIGN.LEFT)
     qs = [l for l in body.split("\n") if l.strip()]
     for i, q in enumerate(qs[:6]):
-        y = V._px(126) + i * V._px(86)
-        V.box(s, V._px(120), y, W - V._px(240), V._px(68), fill=V.LIGHT)
+        y = V._px(120) + i * V._px(80)
+        V.box(s, V._px(120), y, W - V._px(240), V._px(62), fill=V.LIGHT)
         V.box(s, V._px(120), y, V._px(5), V._px(68), fill=V.BLUE, radius=False)
         V.label(
             s,
@@ -298,8 +298,8 @@ def card_page(prs, title, body, note, ch_no):
         t = re.sub(r"^[•▎·]+\s*", "", l).strip()
         t = re.sub(r"^\d+[.、)]\s*", "", t).strip()
         items.append(t)
-    margin, gap, top = V._px(96), V._px(20), V._px(104)
-    avail = H - top - V._px(112 if note else 44)
+    margin, gap, top = V._px(92), V._px(18), V._px(96)
+    avail = H - top - V._px(104 if note else 36)
     two_col = len(items) >= 5
     if two_col:
         rows = math.ceil(len(items) / 2)
@@ -360,8 +360,8 @@ def card_page(prs, title, body, note, ch_no):
                 spacing=1.12,
             )
     if note:
-        y = H - V._px(96)
-        V.box(s, margin, y, W - margin * 2, V._px(58), fill=V.LIGHT)
+        y = H - V._px(88)
+        V.box(s, margin, y, W - margin * 2, V._px(54), fill=V.LIGHT)
         V.label(
             s,
             margin + V._px(20),
@@ -593,6 +593,30 @@ def _render_code(code: str, out_png: Path):
     return img.size
 
 
+def apply_lecture_branding(prs, lec_no: int, lec_title: str):
+    """教研室模板:封面代码化徽章 + 全页左下页眉标签(仅讲次版)。"""
+    from pptx.enum.shapes import MSO_AUTO_SHAPE_TYPE as _SHP
+    # 封面徽章(双环 + AEP + 说明)
+    cover = prs.slides[0]
+    cx, cy, r = W - V._px(240), H - V._px(190), V._px(56)
+    ring = cover.shapes.add_shape(_SHP.OVAL, cx - r, cy - r, r * 2, r * 2)
+    ring.fill.background(); ring.line.color.rgb = V.AMBER
+    ring.line.width = __import__("pptx").util.Pt(2)
+    ring.shadow.inherit = False
+    inner = cover.shapes.add_shape(_SHP.OVAL, cx - r + V._px(8), cy - r + V._px(8),
+                                   (r - V._px(8)) * 2, (r - V._px(8)) * 2)
+    inner.fill.solid(); inner.fill.fore_color.rgb = V.PANEL
+    inner.line.fill.background(); inner.shadow.inherit = False
+    V.label(cover, cx - r, cy - V._px(16), r * 2, V._px(32), "AEP", 18, V.AMBER, True)
+    V.label(cover, cx - r - V._px(60), cy + r + V._px(6), r * 2 + V._px(120), V._px(28),
+            "AI Agent 训练营 · 教研室", 10, V.FAINT)
+    # 其余页:左下页眉
+    for sl in list(prs.slides)[1:]:
+        V.label(sl, V._px(64), H - V._px(34), V._px(560), V._px(28),
+                f"教研室内部课件 · 讲次 {lec_no:02d} · {lec_title[:18]}", 9, V.FAINT,
+                align=__import__("pptx").enum.text.PP_ALIGN.LEFT)
+
+
 def build(module_name: str, lecture_split: bool = True):
     txt = Path(__file__).parent / "ppt_content" / f"{module_name}.txt"
     meta, pages = parse_txt(txt)
@@ -630,6 +654,7 @@ def build(module_name: str, lecture_split: bool = True):
                 res = render_page(lp, page, meta["no"], j, len(seg) + 1)
                 if res and res[0] == "SECTION":
                     section_slide(lp, res[1], 0, 1)
+            apply_lecture_branding(lp, li + 1, sub.replace("讲次 ", ""))
             name = re.sub(r"[\\/:*?\"<>|]", "", sub)[:28]
             lo = OUT / "讲次版" / f"第{meta['no']}章-{li + 1}-{name}.pptx"
             lp.save(lo)
