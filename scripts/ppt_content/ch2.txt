@@ -50,6 +50,8 @@ Lab2 验收清单
 • 依据:name + description + 参数说明
 • 多工具相似 → 选择抖动
 • 缓解:描述差异化 + few-shot 示范
+#CODE @tool 装饰器:签名派生 Schema|src/agent_platform/tools/runtime.py:76-108
+
 #FLOW 模型选工具流程|任务语义->匹配 name+description->生成参数(遵循 Schema)->Runtime 校验->执行->观察回灌|note=描述写不好=选择抖动:描述是给模型看的 Prompt|选择准确率可评测
 
 #PAGE 模型不选工具怎么办
@@ -229,6 +231,8 @@ Q1 工具下线为什么必须是热操作?
 Q2 版本升级的兼容窗口怎么定?
 Q3 动态装配为什么不全量注入?
 Q4 你如何验证工具描述改好了?
+#CODE 执行管线|src/agent_platform/tools/runtime.py:196-236
+
 #SECTION 讲次 2-3 · 工具治理与安全边界
 #PAGE 治理四道防线
 • 参数校验:挡脏数据
@@ -336,6 +340,8 @@ Q4 脱敏应该在哪一层做?
 • 连接模型与外部工具/资源的标准协议
 • Client/Server 架构
 • Anthropic 开源,已成行业趋势
+#GRID 2026 前沿①:MCP 生态演进|Streamable HTTP 取代 stdio 为主流传输;Server 目录化:一次接入处处复用;企业网关:集中鉴权/审计/配额;本平台:PulsarAuditBus+三层权限|cols=2|与 OWASP LLM Top10 联动
+
 #SEQ MCP 调用时序|Agent,MCP Client,MCP Server,外部资源 |0->1:发现工具清单;1->2:tools/call(参数);2->3:执行(受白名单约束);3->2:结果+元数据;2->1:结构化返回;1->0:观察回灌|三层权限:Server/工具/参数
 
 #PAGE FC 与 MCP 的分工
@@ -348,6 +354,8 @@ Q4 脱敏应该在哪一层做?
 • Resources:可读的数据源
 • Prompts:预置提示模板
 >>一个 Server 同时暴露三类
+#CODE default_registry:四工具装配|src/agent_platform/api/deps.py:9-30
+
 #GRID MCP 三大能力卡|Tools:可执行函数;Resources:可读数据源;Prompts:预置提示模板|cols=3|一个 Server 同时暴露三类
 
 #PAGE MCP vs 传统 HTTP API
@@ -383,6 +391,8 @@ Q4 脱敏应该在哪一层做?
 • 工具级:可调用哪些
 • 参数级:路径/表名白名单
 >>三层收敛,默认拒绝
+#CODE PulsarAuditBus:异步安全投递|src/agent_platform/tools/pulsar_audit.py:56-88
+
 #GRID MCP 三层权限收敛|Server 级:可连接白名单;工具级:可调用子集;参数级:路径/表名白名单|cols=3|默认拒绝
 
 #PAGE MCP 审计与连接管理
@@ -390,6 +400,8 @@ Q4 脱敏应该在哪一层做?
 • 工具调用全部过统一审计
 • 断线自动重连+退避
 >>与 PulsarAuditBus 同一出口
+#GRID 2026 前沿②:Agent 安全框架|OWASP LLM Top10(2025 版):提示注入/敏感泄露/供应链/越权;Agent 身份:服务账号+短期凭证(M2M);审计防篡改:哈希链(平台已实现);等保 2.0:日志留存≥6 个月|cols=2|面试高频:安全三件套
+
 #SEQ 连接生命周期时序|Client,连接池,MCP Server |0->1:握手+能力协商;1->2:心跳保活(15s);2->1:断线检测;1->2:指数退避重连;1->0:连接释放|断连自动重连,工具不摘除
 
 #PAGE 应用:多 Server 组合任务
@@ -490,6 +502,14 @@ Q4 Server 升级的风险如何防控?
 • 高危无确认→被拒,确认后通过
 • api_key 参数全程脱敏
 >>验收清单见下一页
+#QUIZ 自测 · MCP 与集成
+Q1 MCP 与 FC 的分工边界?
+Q2 三层权限如何收敛?
+Q3 Server 版本漂移如何防控?
+Q4 CLI 调试为何要先于接模型?
+
+#CODE MCP deps|src/agent_platform/api/deps.py:9-34
+
 #METRICS M2 里程碑数字|22^测^工具模块单测;6^步^执行管线;3^角色^RBAC;100%^高危拦截^实测|CI 持续绿
 
 #PAGE 本章小结

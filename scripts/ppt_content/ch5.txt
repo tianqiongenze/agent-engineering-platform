@@ -38,6 +38,8 @@ Lab5 验收清单
 • 适合长程任务解耦
 • 计划修订回流 Planner
 >>第3章 Planning 的多体化
+#CODE 冲突检测与仲裁:aspect 分组|src/agent_platform/multi_agent/supervisor.py:96-118
+
 #SEQ 计划-执行时序|Planner,Executor,观察 |0->1:完整计划清单;1->0:执行结果回传;0->0:偏差→修订计划;0->1:新步骤下发;1->0:全部完成汇总|计划是文档不是契约
 
 #PAGE Reviewer 模式
@@ -199,6 +201,8 @@ Q1 八要素里最容易被忽略的两项?
 Q2 为什么默认只读?
 Q3 aspect 字段解决什么问题?
 Q4 超时 Worker 的结果怎么处理?
+#CODE Skill|src/agent_platform/multi_agent/skill.py:24-56
+
 #SECTION 讲次 5-3 · Skill 系统
 #PAGE Skill 是什么
 • 某类任务的执行方法封装
@@ -233,6 +237,8 @@ Q4 超时 Worker 的结果怎么处理?
 • 人工确认节点
 • 失败恢复路径
 >>编排结果=微型工作流
+#CODE find:2-gram 场景匹配|src/agent_platform/multi_agent/skill.py:40-56
+
 #GRID 复用三场景|跨 Agent:同一技能多主体用;跨业务:方法论通用;跨项目:目录随仓库走|cols=3|一次沉淀处处受益
 
 #FLOW Skill 组合模式|顺序:上游产出喂下游->并行:独立子任务 gather->条件:按结果分支->确认:高危节点 HITL|note=编排结果=微型工作流|复用三次再抽象
@@ -429,6 +435,8 @@ Q4 回归双清单怎么读?
 • Architecture/Test/Security/Performance
 • Documentation+Report 汇总
 >>平台六个 Worker 可直接实装
+#GRID 2026 前沿①:多 Agent 互操作|A2A 协议:Agent Card 发现+任务委派;Anthropic.subagents:子代理即一等公民;Supervisor→Handoffs 范式融合;平台对照:SubagentTask+aspect 仲裁|cols=2|评测平台:LangSmith/AgentOps 对比讲义
+
 #GRID 可维护性分析六角色|Supervisor:拆解调度决策;Architecture:模块边界/依赖;Test:覆盖率/缺失测试;Security:鉴权/注入/越权;Performance:慢查询/缓存;Report:合并冲突成文|cols=3|Lab5 主任务
 
 #PAGE Eval 平台能力清单
@@ -438,6 +446,8 @@ Q4 回归双清单怎么读?
 • 成功率/成本/耗时统计
 • 失败聚类+回归报告
 >>平台已具备核心件
+#GRID 2026 前沿②:评测即基础设施|LLM-as-Judge 标准化(评分卡+理由);在线评测:流量抽样回流;成本评测:每任务 $ 曲线;平台对照:EvalRunner+回归门禁|cols=2|案例:Devin 的回放式评测
+
 #ARCH Eval 平台分层|管理层:Benchmark 管理,版本,批量运行;执行层:Agent 运行,指标计算,Judge;分析层:失败聚类,回归报告,前后对比;集成:CI 门禁,PR 阻断|flow=配置,运行,分析|平台已具备核心件
 
 #PAGE 应用:一次真实的迭代
@@ -496,6 +506,14 @@ Q4 回归双清单怎么读?
 • [ ] 一次 Prompt 改动回归对比
 • [ ] 失败样本聚类分析
 • [ ] 冲突仲裁案例演示
+#QUIZ 自测 · 评测平台化
+Q1 LLM-as-Judge 三偏置的对策?
+Q2 在线评测如何抽样回流?
+Q3 A2A 的 Agent Card 含什么?
+Q4 成本评测的曲线怎么画?
+
+#CODE Worker 结果|src/agent_platform/multi_agent/supervisor.py:20-40
+
 #PAGE 下一章预告
 • 部署形态与推理服务
 • 缓存体系与成本治理

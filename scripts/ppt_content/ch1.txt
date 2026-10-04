@@ -311,6 +311,8 @@ Q4 TTFT 为什么比总时长更重要?
 • 示例覆盖边界情况效果最佳
 • 示例本身成为 Prompt 的一部分资产
 >>JSON 输出任务先试 Few-shot
+#CODE ChatMessage:role 约束与校验|src/agent_platform/gateway/domain.py:14-32
+
 #GRID Few-shot 设计三要点|数量:2~3 个足够;覆盖:含边界情况样例;一致性:格式与目标输出严格同构|cols=3|格式敏感任务首选
 
 #PAGE 任务拆解:降幻觉的核心手段
@@ -384,6 +386,8 @@ Q4 TTFT 为什么比总时长更重要?
 • 模板:决议/待办/风险三段
 • 约束:待办必须带负责人与期限
 • 输出直接进协作工具
+#CODE SecurityStack:风控组合入口|src/agent_platform/security/guard.py:118-138
+
 #FLOW 纪要生成流水线|转写文本->模板三段(决议/待办/风险)->待办抽取(负责人+期限)->校验必填->输出结构化纪要|note=模板即代码:版本化进仓库|固定段落=可校验
 
 #PAGE 踩坑:示例泄漏进生产输出
@@ -530,6 +534,8 @@ Q4 模板化解决了什么工程问题?
 • SSE 流式 + GraphQL 查询面
 • 68 个测试,覆盖率 96%
 >>真实供应商只需 .env 切换
+#GRID 2026 前沿①:提示词工程新范式|DSPy:Prompt 编译器(程序化优化);Prompt Caching 经济学:官方缓存省 50~90% 输入费;结构化输出已成为 API 原生能力;A/B→多臂老虎机自动择优|cols=2|企业案例:Cursor 的 Cursor Rules 生态
+
 #CHART bar|真实联调延迟对比(秒)|APIS complete=17.0,APIS stream=4.9,nvidia complete=25.1|insight=流式首响应快 3.5 倍:TTFT 是体验北极星|双协议实测 2026-10-03
 
 #PAGE 本章小结
@@ -538,6 +544,8 @@ Q4 模板化解决了什么工程问题?
 • Streaming:体验与成本的双重解
 • Prompt/结构化:从 Demo 到工程
 >>下一章:让模型长出手
+#GRID 2026 前沿②:模型生态与案例|国产双雄:GLM-5(1M 上下文)/DeepSeek-V4(推理强);编码代理:Claude Code/Cursor/Devin(任务级自主);国内平台:扣子(Coze)/百炼(阿里);本课程:双协议实测 GLM-5.3|cols=2|2026-10 实测数据在册
+
 #METRICS M1 里程碑成果|2^协议^OpenAI+Anthropic;17.0^秒^真实联调;626^tokens^单次全程;93%^覆盖率^模块级|两协议实测 2026-10-03
 
 #PAGE Lab1 验收清单
@@ -546,6 +554,14 @@ Q4 模板化解决了什么工程问题?
 • [ ] 主模型故障自动 fallback(attempts=2)
 • [ ] 结构化输出反喂重试成功
 • [ ] Prompt 模板进仓库并带版本号
+#QUIZ 自测 · 结构化输出与 Gateway
+Q1 为什么禁止裸解析自然语言?
+Q2 反喂重试的 Prompt 怎么构造?
+Q3 语义缓存阈值为什么 0.92?
+Q4 Gateway 单点怎么防?
+
+#CODE Anthropic complete|src/agent_platform/gateway/anthropic_provider.py:86-116
+
 #PAGE 下一章预告
 • Function Calling:模型如何选工具
 • Tool Registry:工具如何被治理

@@ -19,6 +19,8 @@ Lab4 验收清单
 • 成本:Token 计费线性增长
 • 注意力:长内容中间被忽略
 >>三个约束一起做预算
+#CODE ContextWindow.fit:装箱算法|src/agent_platform/context_memory/context.py:22-46
+
 #METRICS 窗口三约束量化|128k^窗口^物理上限;96k^预算^实际可用;70%^降幅^压缩实测(20→6条)|长度/成本/注意力同时做预算
 
 #PAGE Context Packing:进还是不进
@@ -196,6 +198,8 @@ Q1 WM 与 Agent State 怎么分工?
 Q2 Scratchpad 里放什么?
 Q3 工作集膨胀怎么治?
 Q4 生命周期四个阶段?
+#CODE 语义缓存|src/agent_platform/shared/semantic_cache.py:44-92
+
 #SECTION 讲次 4-3 · Memory 体系
 #PAGE 三层记忆全景
 • 短期:当前会话/任务状态
@@ -286,6 +290,8 @@ Q1 三层记忆各自的生命周期?
 Q2 记忆可信度怎么定级?
 Q3 项目级记忆为什么随仓库走?
 Q4 记忆污染如何治理?
+#CODE Memory|src/agent_platform/context_memory/memory.py:14-56
+
 #SECTION 讲次 4-4 · 现代 RAG 全链路
 #PAGE RAG 的本质
 • 检索增强生成
@@ -320,6 +326,8 @@ Q4 记忆污染如何治理?
 • 领域适配:代码 vs 通用文本
 • 一致性:索引与查询必须同模型
 >>换模型=全量重建索引
+#CODE BM25:IDF 打分实现|src/agent_platform/context_memory/rag.py:60-84
+
 #PAGE 向量数据库
 • FAISS:轻量本地,教学友好
 • Milvus:分布式生产主流
@@ -395,6 +403,10 @@ Q4 记忆污染如何治理?
 • RRF:1/(K+rank) 融合,K=60
 • via 字段标注命中通道
 >>平台 HybridRetriever 单测可查
+#CODE SemanticCache:精确+语义双段|src/agent_platform/shared/semantic_cache.py:44-88
+
+#GRID 2026 前沿①:RAG 演进|Agentic RAG:检索器作为工具被 Loop 调度;GraphRAG:知识图谱+社区摘要(全局问题);Contextual Retrieval:块级上下文预生成;长上下文≠免检索:成本仍 10x+|cols=2|企业案例:百炼企业知识库
+
 #CHART bar|语义缓存命中:仅精确 vs +语义层(%)|仅精确键=9.9,+语义层=42.2|insight=+32.3% 绝对提升:τ=0.92 相似度+键归一化|短查询(<8字)强制 bypass 防误答
 
 #CODE RRF 双通道融合|src/agent_platform/context_memory/rag.py:106-125
@@ -408,6 +420,8 @@ Q4 四个评估指标怎么组合看?
 • 为 LLM 消费优化的知识库
 • 与 RAG 的关系:RAG 的知识源
 • 结构化+版本化+可溯源
+#GRID 2026 前沿②:记忆与知识新范式|Agentic Memory:记忆写入/检索/遗忘自治;向量库→混合库:向量+图+倒排一体;课程记忆:技能库即长期记忆;平台:MemoryStore 三层已对齐|cols=2|LangSmith/AgentOps=记忆可观测
+
 #PAGE 与传统知识库的差异
 • 传统:给人看,重呈现
 • LLM Wiki:给模型看,重可解析
@@ -499,6 +513,14 @@ Q4 四个评估指标怎么组合看?
 • [ ] 项目记忆注入行为改善
 • [ ] 混合检索命中双通道
 • [ ] Context Debug Report 可输出
+#QUIZ 自测 · RAG 前沿
+Q1 Agentic RAG 与管线式 RAG 差异?
+Q2 GraphRAG 适合哪类问题?
+Q3 记忆如何防污染?
+Q4 检索回归四指标如何组合?
+
+#CODE Router|src/agent_platform/shared/db_routing.py:26-56
+
 #PAGE 下一章预告
 • 单 Agent 的天花板
 • Multi-Agent 协作模式

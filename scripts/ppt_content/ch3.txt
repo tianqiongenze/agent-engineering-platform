@@ -163,6 +163,8 @@ Q4 循环预算怎么定?
 • 触发:工具结果与预期偏离
 • 修订要留痕:为什么改
 >>计划是文档,不是契约
+#CODE AgentLoop 初始化:resume 语义|src/agent_platform/orchestration/loop.py:104-126
+
 #FLOW 动态计划循环->生成计划->执行一步->校验偏差->偏离?->是:修订计划->继续->完成|loop=2|note=修订留痕:为什么改|计划是文档不是契约
 
 #PAGE 子目标拆解
@@ -273,6 +275,8 @@ Q4 计划缓存的前提是什么?
 • 重启后 resume_from 加载
 • 从最后观察点继续
 >>平台测试:test_checkpoint_resumes
+#CODE DatabaseRouter:异步写会话+锚定|src/agent_platform/shared/dao.py:34-52
+
 #TERM kill/resume 演示实录,$ kill -9 <agent-pid>  # 模拟崩溃;进程消失,Checkpoint 已落盘;$ loop2 = AgentLoop(resume_from=run_id);COMPLETED  历史观察完整带回;# 每轮 save(深拷贝)是底气|tests 真实复现
 
 #PAGE 失败任务复现
@@ -437,6 +441,10 @@ Q4 本地与容器沙箱怎么选?
 • 节点=动作,边=流转
 • 条件边实现分支
 • Checkpointer 内置持久化
+#CODE run 主循环:四出口实现|src/agent_platform/orchestration/loop.py:128-176
+
+#GRID 2026 前沿①:编排生态|LangGraph 1.0:生产化里程碑(Checkpointer 原生);OpenAI Agents SDK:Handoffs 范式;A2A 协议:跨厂商 Agent 互操作( discovery/card);本平台:Decider 防腐层可对接任一框架|cols=2|A2A=Agent 界的 HTTP
+
 #GRID 图对象四件套|StateGraph:状态承载;Node:动作(薄节点);Edge:流转/条件分支;Checkpointer:每步持久化|cols=2|节点薄/逻辑在域层
 
 #PAGE LangGraph 关键能力
@@ -508,12 +516,20 @@ Q4 本地与容器沙箱怎么选?
 • 状态机+Checkpoint:可恢复
 • Sandbox:三类边界最小权限
 >>下一章:认知能力扩展
+#GRID 2026 前沿②:Computer Use 与多模态|Computer Use:GUI 操作型 Agent(浏览器/桌面);Browser Use:结构化网页操作;多模态输入:截图理解→操作决策;本平台延伸:Sandbox 内跑无头浏览器|cols=2|案例:Manus 通用任务代理
+
 #PAGE Lab3 验收清单
 • [ ] 演示仓库完成代码理解任务
 • [ ] kill 后 resume_from 恢复
 • [ ] 危险命令被 Sandbox 拦截
 • [ ] 连续重复动作触发熔断
 • [ ] 九态流转全程留痕
+#QUIZ 自测 · Harness 与 LangGraph
+Q1 Harness 五要素如何注入测试?
+Q2 LangGraph 与本平台 Loop 的映射?
+Q3 Computer Use 型 Agent 的沙箱要求?
+Q4 何时选 A2A 而非进程内子代理?
+
 #PAGE 下一章预告
 • 上下文:Agent 的认知带宽
 • 记忆:短期/长期/项目级

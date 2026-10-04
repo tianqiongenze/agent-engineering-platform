@@ -6,8 +6,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import threading
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from agent_platform.tools.runtime import AuditBus, AuditEvent
@@ -34,6 +36,7 @@ class PulsarAuditBus(AuditBus):
         self._factory = factory or _default_factory
         self._producer: Any | None = None
         self._lock = threading.Lock()
+        self._io_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="pulsar-audit")
         self.published = 0
         self.dropped = 0
 
@@ -42,15 +45,27 @@ class PulsarAuditBus(AuditBus):
             self._producer = self._factory(self.url, self.topic)
         return self._producer
 
+    def _send_blocking(self, event: AuditEvent) -> None:
+        """真实网络发送(仅供线程池调用;失败复位 producer 待重建)。"""
+        try:
+            producer = self._ensure_producer()
+            producer.send(event.model_dump_json().encode())
+            self.published += 1
+        except Exception:  # 旁路降级:吞异常、计数、复位待重建
+            self.dropped += 1
+            self._producer = None
+
     def publish(self, event: AuditEvent) -> None:
-        with self._lock:
-            try:
-                producer = self._ensure_producer()
-                producer.send(event.model_dump_json().encode())
-                self.published += 1
-            except Exception:  # 旁路降级:吞异常、计数、复位待重建
-                self.dropped += 1
-                self._producer = None
+        """同步 API;在事件循环内自动移交 I/O 线程池,不阻塞主循环(审查重构项)。"""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        if loop is not None:
+            loop.run_in_executor(self._io_pool, self._send_blocking, event)
+        else:
+            with self._lock:
+                self._send_blocking(event)
 
     def close(self) -> None:
         with self._lock:

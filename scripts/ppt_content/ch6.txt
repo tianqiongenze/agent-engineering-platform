@@ -34,6 +34,8 @@ Lab6 验收清单
 • Continuous Batching:吞吐数倍提升
 • OpenAI 兼容接口开箱即用
 >>换到 vLLM,平台代码零改动
+#GRID 2026 前沿①:推理服务演进|vLLM v1 引擎:零开销前缀缓存;PD 分离:Prefill/Decode 独立扩缩;国产推理:GLM/DeepSeek 官方端点 OpenAI 兼容;评测:tokens/s/卡 为采购指标|cols=2|案例:百炼/火山方舟企业部署
+
 #GRID vLLM 三件套|PagedAttention:显存分页管理;Continuous Batching:随到随插队;OpenAI 兼容:换引擎零改码|cols=3|同卡并发数倍提升
 
 #PAGE PagedAttention 直觉理解
@@ -121,6 +123,8 @@ Q1 三种部署形态的决策变量?
 Q2 PagedAttention 解决什么问题?
 Q3 长上下文请求怎么隔离?
 Q4 容量规划看哪四个指标?
+#CODE Span|src/agent_platform/governance/trace.py:18-52
+
 #SECTION 讲次 6-2 · 性能与成本优化
 #PAGE 成本治理的全景
 • 缓存:少调用
@@ -270,6 +274,8 @@ Q4 为什么写工具不能缓存?
 • 输入输出 Token/Cost/Latency
 • 状态与错误原因
 >>成本治理与回归分析的数据源
+#CODE 六族 Prometheus 指标定义|src/agent_platform/observability/metrics.py:20-42
+
 #PAGE 工具调用日志
 • 记:工具/版本/参数(脱敏)
 • 权限判定结果/耗时
@@ -286,6 +292,8 @@ Q4 为什么写工具不能缓存?
 • GraphQL 聚合查询
 • 失败任务一键下钻
 >>BFF 的典型消费场景
+#CODE _SpanCtx:context manager|src/agent_platform/governance/trace.py:56-72
+
 #TERM GraphQL Trace 查询实测,query { runs(state: "failed", tenant: "acme") {;  id goal spans { name ok durationMs };}};→ 返回失败任务的 span 树;下钻: 最慢 span 一目了然;# BFF 按需取字段,避免 N+1|教学控制台同款查询
 
 #PAGE Replay 机制
@@ -407,6 +415,8 @@ Q4 高基数问题怎么防?
 • 按任务类型/风险等级
 • A/B Test+指标观察
 >>平台:一致性哈希百分比灰度
+#CODE JwtCodec:HS256 签发与校验|src/agent_platform/security/auth.py:36-70
+
 #FLOW 灰度发布流水线|变更+评测通过->审批->10% 流量->指标观察 24h->50%->100%|loop=3|note=任一指标异常→FeatureFlag 一键回滚(秒级)|一致性哈希:同用户判定恒定
 
 #PAGE 灰度的工程要求
@@ -430,6 +440,8 @@ Q4 高基数问题怎么防?
 • 配置中心/敏感字段脱敏
 • 数据权限过滤
 >>七件事一张清单
+#GRID 2026 前沿②:安全与身份生产化|OWASP LLM Top10 落地清单(注入/越权/供应链);Agent 身份:每 Agent 独立凭证+最小权;等保 2.0 三级:审计留存/边界防护;平台:WAF 模板+哈希链+JWT/M2M 可扩展|cols=2|企业案例:金融 Agent 合规落地
+
 #PAGE 平台化封装三级
 • SDK:Gateway/Context/ToolCall/AgentRun/EvalRunner
 • 服务化:模型/上下文/工具/工作流/评测/日志服务

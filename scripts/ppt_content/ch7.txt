@@ -165,6 +165,8 @@ Q3 二次开发如何避免升级冲突?
 • 研究从数天缩短到数小时
 • 核心:Skill 沉淀方法论
 >>Capstone A 的完整蓝图
+#GRID 2026 前沿①:研究类产品图谱|Manus:通用任务代理(多工具长任务);DeepResearch 类:OpenAI/Gemini 深研模式;企业内:尽调/竞品/行研平台化;本课 Capstone A=同类 MVP|cols=2|差异化:证据链+可审计
+
 #ARCH 深度研究平台蓝图|主导 Agent:接题/拆解/编排;资料组:多源搜集(检索 Worker);验证组:交叉核对(证据 Worker);产出:Markdown 报告+证据链|flow=拆解,并行,成文|examples/capstone/deep_research 已可运行
 
 #PAGE 研究平台的角色分工
@@ -308,6 +310,8 @@ Q3 二次开发如何避免升级冲突?
 Q1 两个案例各自的核心机制?
 Q2 证据链/可追溯为什么是红线?
 Q3 全自动化的边界在哪里?
+#CODE RW Router|src/agent_platform/shared/db_routing.py:26-56
+
 #SECTION 讲次 7-3 · Agent 产品化与作品集表达
 #PAGE 适合 Agent 的场景
 • 信息检索/文档分析/研究分析
@@ -329,6 +333,8 @@ Q3 全自动化的边界在哪里?
 • Agent:路径不确定需自主决策
 • 脚本:完全确定的任务
 >>选错形态是最贵的错误
+#GRID 2026 前沿②:编码代理与选型|Devin/Claude Code/Cursor:三条路线对比;国内:通义灵码/CodeGeeX;选型:任务自主度×可控性矩阵;本课:Codebase Agent=自主度可控版|cols=2|面试:能讲清三者差异即加分
+
 #PAGE 如何避免过度 Agent 化
 • 每加一层自主性问:换来什么
 • 用 Workflow 能解决就别上 Agent
@@ -353,6 +359,8 @@ Q3 全自动化的边界在哪里?
 • 满意度/业务转化率
 • 错误率/风险事件数
 >>向业务方汇报的词汇表
+#CODE ReadWriteRouter:读己之写|src/agent_platform/shared/db_routing.py:26-52
+
 #CHART hbar|研究报告产出耗时(人天)|传统人工=4.0,平台+复核=0.5|insight=数天→数小时:效率 8 倍,引用准确率≥90% 守门|答辩用真实数字
 
 #PAGE 从技术指标到业务价值
@@ -372,6 +380,8 @@ Q3 全自动化的边界在哪里?
 • 三级风险+人工确认+审计脱敏
 • 用测试数字佐证:覆盖率高
 >>Story:一次拦截高危操作的演练
+#CODE 哈希链:canonical+publish|src/agent_platform/security/audit_chain.py:16-38
+
 #PAGE 作品集:Codebase Agent 叙事
 • 长程任务:Loop/状态机/恢复
 • 真实任务:代码理解+测试修复
@@ -481,6 +491,11 @@ Q3 用什么数据讲你的 Eval 故事?
 • 两案例:研究平台+软件工厂
 • 产品化:场景判断+七步拆解
 • 作品集:数字化的技术叙事
+#QUIZ 自测 · 产品化与案例
+Q1 Cursor/Devin/Claude Code 路线差异?
+Q2 扣子/百炼的定位区别?
+Q3 你的 Capstone 对标哪个产品?
+
 #PAGE Capstone 指引
 • 骨架:examples/capstone/ 三案例
 • 每案例:README+demo+测试

@@ -49,3 +49,19 @@ class TestPulsarAuditBus:
         bus.publish(event())
         assert bus.dropped == 1
         assert bus._producer is None  # 已复位,下条消息重建
+
+
+class TestAsyncSafety:
+    async def test_publish_inside_event_loop_does_not_block(self) -> None:
+        """事件循环内调用 publish:移交 I/O 线程池,不阻塞主循环(异步安全重构)。"""
+        import asyncio
+
+        producer = FakeProducer()
+        bus = PulsarAuditBus(factory=lambda url, topic: producer)
+        loop = asyncio.get_running_loop()
+        flag = loop.create_future()
+        loop.call_later(0.05, flag.set_result, True)  # 若被阻塞将无法按时触发
+        bus.publish(event())
+        await asyncio.wait_for(flag, timeout=1.0)  # 未被阻塞 → 通过
+        await asyncio.sleep(0.1)  # 等 executor 线程完成
+        assert bus.published == 1 and producer.sent
