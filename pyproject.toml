@@ -64,6 +64,7 @@ src = ["src", "tests"]
 # PPT 内容与生成器:DSL/中文内容字符串天然超长,豁免行长
 "scripts/enrich_visuals.py" = ["E501", "RUF001", "RUF005"]
 "scripts/enrich_round3.py" = ["E501", "RUF001", "RUF005"]
+"scripts/enrich_round4.py" = ["E501", "RUF001", "RUF005"]
 "scripts/gen_pptx.py" = ["E501", "E702", "E741", "F841", "RUF005", "B905"]
 "scripts/pptx_visuals.py" = ["E501", "E702", "E741", "F841", "RUF001", "RUF005", "RUF034", "RUF059", "B905", "S110"]
 
