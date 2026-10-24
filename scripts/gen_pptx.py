@@ -399,52 +399,32 @@ def render_page(prs, page, ch_no, idx, total, sections_total=None):
     elif kind == "PAGE":
         card_page(prs, title, body, note, ch_no)
     elif kind == "ARCH":
-        layers_raw, flows, tag = data, None, ""
-        m = re.search(r"\|flow=([^|]*)", layers_raw)
-        if m:
-            flows = m.group(1)
-            layers_raw = layers_raw.replace(m.group(0), "")
-        tag = layers_raw.split("|")[-1].strip() if "|" in layers_raw else ""
-        if tag and not re.search(r"[\u4e00-\u9fffA-Za-z]", tag.split(":")[-1]):
-            layers_raw = layers_raw.rsplit("|", 1)[0]
+        payload = data.split("|")[0]
+        m = re.search(r"\|flow=([^|]*)", data)
+        flows = m.group(1) if m else ""
         layers = [
             [c.strip() for c in g.split(",")]
-            for g in layers_raw.replace("\n", "").split(";")
+            for g in payload.replace("\n", "").split(";")
             if g.strip()
         ]
-        V.arch_diagram(
-            prs.slides.add_slide(prs.slide_layouts[6]), title, layers, _strip(tag), flows or ""
-        )
+        V.arch_diagram(prs.slides.add_slide(prs.slide_layouts[6]), title, layers, "", flows)
     elif kind == "FLOW":
-        src = data
-        loop, fnote = None, ""
-        m = re.search(r"\|loop=(\d+)", src)
-        if m:
-            loop = int(m.group(1))
-            src = src.replace(m.group(0), "")
-        m = re.search(r"\|note=([^|]*)", src)
-        if m:
-            fnote = m.group(1)
-            src = src.replace(m.group(0), "")
-        tag = src.split("|")[-1].strip() if "|" in src else ""
-        if tag and ("=" in tag or not tag):
-            tag = ""
-            src = src.rsplit("|", 1)[0] if "|" in src else src
-        steps = [x.strip() for x in src.replace("\n", "").split("->") if x.strip()]
+        payload = data.split("|")[0]
+        loop = int(m.group(1)) if (m := re.search(r"\|loop=(\d+)", data)) else None
+        fnote = m.group(1) if (m := re.search(r"\|note=([^|]*)", data)) else ""
+        steps = [x.strip() for x in payload.replace("\n", "").split("->") if x.strip()]
         V.flow_diagram(
-            prs.slides.add_slide(prs.slide_layouts[6]), title, steps, tag, loop, fnote or note or ""
+            prs.slides.add_slide(prs.slide_layouts[6]), title, steps, "", loop,
+            fnote or note or "",
         )
     elif kind == "STATE":
-        spec = (
-            data.rsplit("|", 1)[0].strip()
-            if data.count("|") and not data.rsplit("|", 1)[1].strip()
-            else data
-        )
+        payload = data.split("|")[0]
         V.state_diagram(
-            prs.slides.add_slide(prs.slide_layouts[6]), title, spec.replace("\n", ""), ""
+            prs.slides.add_slide(prs.slide_layouts[6]), title, payload.replace("\n", ""), ""
         )
     elif kind == "SEQ":
-        actors_part, _, msg_part = data.partition("|")
+        actors_part = data.split("|")[0]
+        msg_part = data.split("|")[1] if data.count("|") >= 1 else ""
         actors = [a.strip() for a in actors_part.split(",") if a.strip()]
         msgs = []
         for m in msg_part.split(";"):
@@ -456,14 +436,7 @@ def render_page(prs, page, ch_no, idx, total, sections_total=None):
             msgs.append((int(fi), int(ti), lab.strip()))
         V.seq_diagram(prs.slides.add_slide(prs.slide_layouts[6]), title, actors, msgs)
     elif kind == "CHART":
-        insight = ""
-        m = re.search(r"\|insight=([^|]*)", data)
-        if m:
-            insight = m.group(1)
-            data = data.replace(m.group(0), "")
-        slide_title = title
-        if "|" in data and not data.startswith(("bar", "line", "donut", "hbar", "groupbar")):
-            pass
+        insight = m.group(1) if (m := re.search(r"\|insight=([^|]*)", data)) else ""
         base = f"{title}|{data}"
         spec = "|".join(base.split("|")[:3])
         png = V.chart_png(spec.replace("\n", ""), TMP / f"chart_{abs(hash(spec)) & 0xFFFFF}")
@@ -471,68 +444,64 @@ def render_page(prs, page, ch_no, idx, total, sections_total=None):
         seg_title = spec.split("|")[1] if spec.count("|") >= 1 else title
         V.chart_slide(prs, slide, seg_title, png, "", insight or note or "")
     elif kind == "METRICS":
+        payload = data.split("|")[0]
         cards = []
-        for part in data.replace("\n", "").split(";"):
+        for part in payload.replace("\n", "").split(";"):
             part = part.strip()
             if part:
                 v, s_, lab = (part.split("^") + ["", ""])[:3]
                 cards.append((v, s_, lab))
-        V.metric_cards(prs.slides.add_slide(prs.slide_layouts[6]), title, cards, _strip(extra))
+        V.metric_cards(prs.slides.add_slide(prs.slide_layouts[6]), title, cards, "")
     elif kind == "TERM":
-        src = data.split("|")[0]
-        lines = src.split("\n") if "\n" in src else src.split(";")
+        payload = data.split("|")[0]
+        src = payload
+        # 防御:标题吞内容(旧格式 #TERM 标题,行1;行2|tag)→ title 超长时回退
+        if len(title) > 30 and ";" in title and "," in title.split(";")[0]:
+            title, _, rest = title.partition(",")
+            payload = rest + "|" + data
+        lines_ = src.split("\n") if "\n" in src else src.split(";")
         V.terminal(
-            prs.slides.add_slide(prs.slide_layouts[6]),
-            title,
-            [l for l in lines if l.strip()],
-            _strip(extra),
+            prs.slides.add_slide(prs.slide_layouts[6]), title,
+            [l for l in lines_ if l.strip()], "",
         )
     elif kind == "PYRAMID":
+        payload = data.split("|")[0]
         levels = []
-        for g in data.replace("\n", "").split(";"):
+        for g in payload.replace("\n", "").split(";"):
             if g.strip():
                 n_, _, d_ = g.partition(":")
                 levels.append((n_.strip(), d_.strip()))
-        V.pyramid(prs.slides.add_slide(prs.slide_layouts[6]), title, levels, _strip(extra))
+        V.pyramid(prs.slides.add_slide(prs.slide_layouts[6]), title, levels, "")
     elif kind == "TIMELINE":
+        payload = data.split("|")[0]
         items = []
-        for g in data.replace("\n", "").split(";"):
+        for g in payload.replace("\n", "").split(";"):
             if g.strip():
                 h_, _, d_ = g.partition(":")
                 items.append((h_.strip(), d_.strip()))
-        V.timeline(prs.slides.add_slide(prs.slide_layouts[6]), title, items, _strip(extra))
+        V.timeline(prs.slides.add_slide(prs.slide_layouts[6]), title, items, "")
     elif kind == "GRID":
-        cols = 3
-        m = re.search(r"\|cols=(\d)", data)
-        if m:
-            cols = int(m.group(1))
-            data = data.replace(m.group(0), "")
+        payload = data.split("|")[0]
+        cols = int(m.group(1)) if (m := re.search(r"\|cols=(\d)", data)) else 3
         cards = []
-        for g in data.replace("\n", "").split(";"):
+        for g in payload.replace("\n", "").split(";"):
             if g.strip():
                 h_, _, d_ = g.partition(":")
                 cards.append((h_.strip(), d_.strip()))
         V.card_grid(
-            prs.slides.add_slide(prs.slide_layouts[6]), title, cards, _strip(""), cols=cols or 3
+            prs.slides.add_slide(prs.slide_layouts[6]), title, cards, "", cols=cols or 3
         )
     elif kind == "TABLE":
-        hl = -1
-        m = re.search(r"\|hl=(\d+)", data)
-        if m:
-            hl = int(m.group(1))
-            data = data.replace(m.group(0), "")
-        tbl_src = data.split("|")[0]
+        payload = data.split("|")[0]
+        hl = int(m.group(1)) if (m := re.search(r"\|hl=(\d+)", data)) else -1
         rows = [
             [c.strip() for c in ln.split(",")]
-            for ln in tbl_src.replace("\n", "").split(";")
+            for ln in payload.replace("\n", "").split(";")
             if ln.strip()
         ]
         V.styled_table(
-            prs.slides.add_slide(prs.slide_layouts[6]),
-            title,
-            rows,
-            _strip(""),
-            highlight_col=hl if hl is not None else -1,
+            prs.slides.add_slide(prs.slide_layouts[6]), title, rows, "",
+            highlight_col=hl,
         )
     elif kind == "CODE":
         spec = extra if extra.strip() else body

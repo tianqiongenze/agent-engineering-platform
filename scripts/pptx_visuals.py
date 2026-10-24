@@ -74,10 +74,11 @@ def label(
     font=FONT,
     anchor=MSO_ANCHOR.MIDDLE,
     spacing=1.0,
+    wrap=True,
 ):
     tb = slide.shapes.add_textbox(x, y, w, h)
     tf = tb.text_frame
-    tf.word_wrap = True
+    tf.word_wrap = wrap
     tf.vertical_anchor = anchor
     first = True
     for line in text.split("\n"):
@@ -160,32 +161,35 @@ def arch_diagram(slide, title: str, layers: list[list[str]], tag: str = "", flow
     x0 = _px(200)
     for i, comps in enumerate(layers):
         y = top + i * (lh + gap)
-        band = box(
-            slide, x0 - _px(6), y - _px(4), width + _px(12), lh + _px(8), fill=LIGHT, radius=True
+        color = ACCENTS[i % len(ACCENTS)]
+        box(
+            slide, x0 - _px(6), y - _px(4), width + _px(12), lh + _px(8),
+            fill=LIGHT, radius=True,
         )
+        # S5: 层名徽章贴在色带上方,增加可读性与密度
+        label(slide, x0 + _px(6), y - _px(28), _px(200), _px(22),
+              f"L{i + 1}", 11, color, True, align=PP_ALIGN.LEFT)
         cw = (width - _px(16) * (len(comps) - 1)) // max(1, len(comps))
         for j, c in enumerate(comps):
             cx = x0 + j * (cw + _px(16))
-            color = ACCENTS[i % len(ACCENTS)]
-            b = box(slide, cx, y, cw, lh, fill=WHITE, line=color)
+            box(slide, cx, y, cw, lh, fill=WHITE, line=color)
             box(slide, cx, y, _px(5), lh, fill=color, radius=False)
-            label(slide, cx + _px(14), y, cw - _px(24), lh, c, 12, GREY, True, align=PP_ALIGN.LEFT)
+            fs = 13 if len(c) <= 12 else (11 if len(c) <= 18 else 9)
+            label(slide, cx + _px(16), y, cw - _px(28), lh, c, fs, INK, True,
+                  align=PP_ALIGN.LEFT, spacing=1.15, wrap=False)
         if i < n - 1:
-            arrow(slide, W // 2, y + lh + _px(6), W // 2, y + lh + gap - _px(4), FAINT, 1.2)
+            arrow(slide, W // 2, y + lh + _px(6), W // 2, y + lh + gap - _px(4), GREY, 1.4)
             if flows:
                 marks = flows.split(",")
                 if i < len(marks):
-                    label(
-                        slide,
-                        W // 2 + _px(16),
-                        y + lh,
-                        _px(220),
-                        gap,
-                        marks[i],
-                        10,
-                        FAINT,
-                        align=PP_ALIGN.LEFT,
-                    )
+                    # S5 修复:层间标注白底色块+深色字(投影可读)
+                    mk = marks[i][:10]
+                    mw = _px(34 + 20 * len(mk))
+                    box(slide, W // 2 - mw // 2, y + lh + _px(4), mw, gap - _px(8),
+                        fill=WHITE, line=BORDER)
+                    label(slide, W // 2 - mw // 2, y + lh + _px(4), mw, gap - _px(8),
+                          mk, 11, INK, True)
+
 
 
 # ── 2) 横向流程图 ----------------------------------------------------------
@@ -245,7 +249,13 @@ def flow_diagram(
 
 
 def state_diagram(slide, title: str, spec: str, tag: str = ""):
-    """spec: 'A,B,C,D;A->B:启动;B->C:完成;C->A:回退'  网格自动布局。"""
+    """状态机图(v1.5 重写):网格布局+相邻正交连线+白底标签块。
+
+    修复视觉验收缺陷 S2:边标签互相叠压、连线穿越状态框。
+    策略:① 仅相邻网格连线(水平/垂直),非相邻边一律虚线弱化不画标签;
+    ② 标签用白底色块(置于线段中点),杜绝叠字;③ 连线连接框边中点,不穿框。
+    spec: 'A,B,C;A->B:启动;B->A:回退'
+    """
     header(slide, title, tag)
     node_part, _, edge_part = spec.partition(";")
     nodes = [n.strip() for n in node_part.split(",") if n.strip()]
@@ -254,48 +264,95 @@ def state_diagram(slide, title: str, spec: str, tag: str = ""):
         e = e.strip()
         if not e:
             continue
-        l, _, lbl = e.partition(":")
-        a, _, b = l.partition("->")
-        edges.append((a.strip(), b.strip(), lbl.strip()))
+        left, _, lbl = e.partition(":")
+        a, _, b = left.partition("->")
+        if a.strip() in nodes and b.strip() in nodes:
+            edges.append((a.strip(), b.strip(), lbl.strip()))
     n = len(nodes)
-    cols = math.ceil(math.sqrt(n))
+    if n == 0:
+        label(slide, _px(120), H // 2, W - _px(240), _px(80), "(图数据缺失)", 16, FAINT)
+        return
+    # 布局:优先 2~3 列;行高按节点数自适应
+    cols = min(3, math.ceil(math.sqrt(n))) or 1
     rows = math.ceil(n / cols)
-    gw, gh = _px(250), _px(110)
+    gw = (W - _px(240)) // cols
+    gh = min(_px(150), (H - _px(240)) // max(1, rows))
+    bw, bh = min(gw - _px(56), _px(230)), _px(58)
     x0 = (W - cols * gw) // 2
-    y0 = _px(130)
-    vgap = _px(60)
-    y0 = max(y0, (H - rows * (gh + vgap)) // 2 + _px(10))
+    # 垂直居中(复验修复:少节点时不再偏上,下半部留白均衡)
+    content_h = rows * gh
+    y0 = max(_px(120), int((int(H) / 9525 - content_h // 9525) // 2) * 9525)
     pos = {}
     for i, node in enumerate(nodes):
         r, c = divmod(i, cols)
-        x, y = x0 + c * gw, y0 + r * (gh + vgap)
+        x = x0 + c * gw + (gw - bw) // 2
+        y = y0 + r * gh
         terminal = node in ("completed", "failed", "cancelled")
-        start = node == "created"
-        fill = GREEN if terminal else (AMBER if start else WHITE)
-        fg = INK if (terminal or start) else GREY
-        b = box(
-            slide, x, y, gw - _px(16), gh, fill=fill, line=None if (terminal or start) else BLUE
+        begin = node == "created"
+        fill = GREEN if terminal else (AMBER if begin else WHITE)
+        fg = INK if (terminal or begin) else INK
+        box(slide, x, y, bw, bh, fill=fill, line=None if (terminal or begin) else BLUE)
+        label(slide, x, y, bw, bh, node, 13, fg, True)
+        # 记录六向锚点(边中点)
+        pos[node] = dict(
+            l=(x, y + bh // 2), r=(x + bw, y + bh // 2),
+            t=(x + bw // 2, y), b=(x + bw // 2, y + bh),
+            row=r, col=c, x=x, y=y, w=bw, h=bh,
         )
-        label(slide, x, y, gw - _px(16), gh, node, 13, fg, True)
-        pos[node] = (x + (gw - _px(16)) // 2, y, y + gh, x, x + gw - _px(16))
+    index = {nd: i for i, nd in enumerate(nodes)}
     for a, b, lbl in edges:
-        if a not in pos or b not in pos:
-            continue
-        ax, atop, abot, _, aright = pos[a]
-        bx, btop, bbot, bleft, bright = pos[b]
-        if abs(bx - ax) < 10 and bbot < atop:  # 下→上(回退)
-            arrow(slide, ax + _px(30), atop, bx + _px(30), bbot, RED, 1.4, dashed=True)
-        elif abs(bx - ax) < 10 and btop > abot:  # 上→下
-            arrow(slide, ax, abot, bx, btop, GREY, 1.4)
-        elif bx > ax:  # 右向
-            arrow(slide, aright, (atop + abot) // 2, bleft, (btop + bbot) // 2, GREY, 1.4)
+        pa, pb = pos[a], pos[b]
+        adjacent = (pa["row"] == pb["row"] and abs(pa["col"] - pb["col"]) == 1) or (
+            pa["col"] == pb["col"] and abs(pa["row"] - pb["row"]) == 1
+        )
+        forward = index[b] > index[a]
+        back = _px(7)  # 修复:箭头端点从框边外退,杜绝箭头压入框内
+        if pa["row"] == pb["row"] and adjacent:
+            if forward:
+                x1, y1 = pa["r"]
+                x2, y2 = pb["l"][0] - back, pb["l"][1]
+            else:
+                x1, y1 = pa["l"]
+                x2, y2 = pb["r"][0] + back, pb["r"][1]
+            color = BLUE if forward else RED
+            arrow(slide, x1, y1, x2, y2, color, 1.5)
+            mx, my = (x1 + x2) // 2, y1
+        elif pa["col"] == pb["col"] and adjacent:
+            if forward:
+                x1, y1 = pa["b"]
+                x2, y2 = pb["t"][0], pb["t"][1] - back
+            else:
+                x1, y1 = pa["t"]
+                x2, y2 = pb["b"][0], pb["b"][1] + back
+            color = BLUE if forward else RED
+            arrow(slide, x1, y1, x2, y2, color, 1.5)
+            mx, my = x1, (y1 + y2) // 2
         else:
-            arrow(slide, ax - _px(0) + 0, (atop + abot) // 2, bright, (btop + bbot) // 2, GREY, 1.4)
+            # 三修②:非相邻边走顶部总线(上方绕行,纵向段只贴框顶,不穿任何框体)
+            top_bus = y0 - _px(46)
+            sx, sy = pa["t"][0], pa["t"][1] - _px(2)
+            dx_, dy_ = pb["t"][0], pb["t"][1] - back - _px(2)
+            from pptx.enum.dml import MSO_LINE_DASH_STYLE
+
+            for seg in (
+                (sx, sy, sx, top_bus),
+                (sx, top_bus, dx_, top_bus),
+                (dx_, top_bus, dx_, dy_),
+            ):
+                conn = slide.shapes.add_connector(1, *seg)
+                conn.line.color.rgb = BORDER
+                conn.line.width = Pt(1)
+                conn.line.dash_style = MSO_LINE_DASH_STYLE.DASH
+                conn.shadow.inherit = False
+            continue
         if lbl:
-            mx = (aright + bleft) // 2 if bx > ax else (bright + ax - _px(16)) // 2
-            label(
-                slide, mx - _px(90), (atop + abot) // 2 - _px(34), _px(180), _px(24), lbl, 9, FAINT
-            )
+            # 修复:标签块按字宽精确加宽(CJK 全宽),单行不折行
+            text = lbl[:6]
+            lw = _px(30 + 22 * len(text))
+            lh_ = _px(30)
+            box(slide, mx - lw // 2, my - lh_ // 2, lw, lh_, fill=WHITE, line=BORDER)
+            label(slide, mx - lw // 2, my - lh_ // 2, lw, lh_, text, 11, INK, True)
+
 
 
 # ── 4) 时序图 --------------------------------------------------------------
@@ -533,8 +590,12 @@ def metric_cards(slide, title: str, cards: list[tuple[str, str, str]], tag=""):
 
 def terminal(slide, title: str, lines: list[str], tag: str = ""):
     header(slide, title, tag)
-    x, y = _px(140), _px(100)
-    w, h = W - _px(280), H - _px(190)
+    x, y = _px(140), _px(110)
+    w = W - _px(280)
+    # 修复:框高随行数收缩(行数少时不再留 2/3 空黑),最少 3 行高
+    shown = [l for l in lines if l.strip()][:18]
+    h = _px(64 + 40 + 30 * len(shown) + 26)
+    h = min(max(h, _px(240)), H - _px(150))
     box(slide, x, y, w, h, fill=RGBColor(0x0D, 0x11, 0x17), radius=True)
     box(slide, x, y, w, _px(40), fill=RGBColor(0x1F, 0x29, 0x37), radius=False)
     for i, c in enumerate((RED, AMBER, GREEN)):

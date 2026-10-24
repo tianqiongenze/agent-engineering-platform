@@ -75,7 +75,7 @@ class SupervisorAgent:
         self, goal: str, tasks: list[SubagentTask], workers: list[Worker]
     ) -> SupervisorReport:
         results = await asyncio.gather(
-            *(self._run_one(w, t) for w, t in zip(workers, tasks, strict=False))
+            *(self._run_one(w, t) for w, t in zip(workers, tasks, strict=True))
         )
         results = list(results)
 
@@ -83,7 +83,7 @@ class SupervisorAgent:
         conflicts: list[Conflict] = []
         arbitrated: str | None = None
         aspects: dict[str, list[WorkerResult]] = {}
-        for task, res in zip(tasks, results, strict=False):
+        for task, res in zip(tasks, results, strict=True):
             if task.aspect and res.error is None:
                 aspects.setdefault(task.aspect, []).append(res)
         for aspect, group in aspects.items():
@@ -98,7 +98,7 @@ class SupervisorAgent:
             f"任务:{goal}",
             *[
                 f"- {t.goal} → {r.conclusion if not r.error else f'[失败:{r.error}]'}"
-                for t, r in zip(tasks, results, strict=False)
+                for t, r in zip(tasks, results, strict=True)
             ],
         ]
         if conflicts:

@@ -16,10 +16,13 @@ from uuid import uuid4
 
 from agent_platform.tools.runtime import (
     InMemoryAuditBus,
+    PermissionDeniedError,
     RiskLevel,
     ToolContext,
     ToolExecutor,
     ToolRegistry,
+    ToolResult,
+    ValidationFailedError,
     tool,
 )
 
@@ -159,7 +162,11 @@ class AgentLoop:
 
             run.state = AgentState.WAITING_TOOL
             ctx = ToolContext(role="agent", run_id=run.run_id)
-            result = await self.executor.execute(action.tool, action.args, ctx)
+            try:
+                result = await self.executor.execute(action.tool, action.args, ctx)
+            except (PermissionDeniedError, ValidationFailedError) as exc:
+                # P2-12 修复:越权/参数错不终结 run,记为失败步骤继续循环
+                result = ToolResult(ok=False, error=str(exc), tool=action.tool)
             step = StepRecord(
                 tool=action.tool,
                 args=action.args,

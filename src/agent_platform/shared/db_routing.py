@@ -26,6 +26,7 @@ class ReadWriteRouter:
         self.pin_ttl = rtt_pin_ttl_s
         self._pinned_until: dict[str, float] = {}
         self._lock = threading.Lock()
+        self._MAX_PINNED = 10_000  # P1:防会话洪泛
         self.reads_primary = 0
         self.reads_replica = 0
 
@@ -33,11 +34,17 @@ class ReadWriteRouter:
     def write_session(self, session_id: str | None = None) -> Iterator[str]:
         sid = session_id or uuid4().hex
         with self._lock:
+            if len(self._pinned_until) > self._MAX_PINNED:
+                cutoff = time.monotonic()
+                self._pinned_until = {
+                    k: v for k, v in self._pinned_until.items() if v > cutoff
+                }
             self._pinned_until[sid] = time.monotonic() + self.pin_ttl
         try:
             yield sid
         finally:
-            pass  # 锚定按 TTL 自然过期,不主动清除(简化语义)
+            # P1 修复:会话结束即解除锚定(比 TTL 更早回收;TTL 兜底异常路径)
+            self._pinned_until.pop(sid, None)
 
     def write_dsn(self, session_id: str | None = None) -> str:
         return self.primary

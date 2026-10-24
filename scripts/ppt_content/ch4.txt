@@ -66,7 +66,7 @@ Lab4 验收清单
 • system 2k / 记忆 4k / 检索 16k
 • 历史 32k / 输出预留 8k
 >>余量应对突发与超估
-#CHART donut|96k 预算分配(k)|system=2,记忆=4,检索=16,历史=32,输出=8|insight=余量 34k 抗突发与超估|装箱器:ContextWindow.fit
+#CHART donut|96k 预算分配(k)|system=2,记忆=4,检索=16,历史=32,输出=8,余量=34|insight=余量 34k 占 35%:抗突发与超估|装箱器:ContextWindow.fit
 
 #PAGE KV Cache 对成本的影响
 • 前缀相同可复用缓存
@@ -151,7 +151,7 @@ Q4 FitReport 记录了什么?
 • 执行状态快照
 • 下一步计划草稿
 >>给思考留一张纸
-#TERM task_summary 恢复锚点实测,$ memory.set_short("done", "已定位根因");$ memory.task_summary();任务状态摘要;done: 已定位根因;# 上下文截断后注入新窗口→续跑|tests 真实断言
+#TERM task_summary 恢复锚点实测|$ memory.set_short("done", "已定位根因");$ memory.task_summary();任务状态摘要;done: 已定位根因;# 上下文截断后注入新窗口→续跑|tests 真实断言
 
 #PAGE 生命周期管理
 • 创建:任务开始
@@ -255,7 +255,7 @@ Q4 生命周期四个阶段?
 • 全量记忆:成本高,噪声大
 • 检索式记忆:按需召回,平衡
 >>对比维度:成功率/成本/延迟
-#TERM search_long 检索实测,$ mem.add_long("项目约定:测试用 pytest", "wiki");$ mem.search_long("pytest");LongTermMemory(content='项目约定:测试用 pytest',confidence=0.8);# 命中按子串,生产换向量|tests 真实输出
+#TERM search_long 检索实测|$ mem.add_long("项目约定:测试用 pytest", "wiki");$ mem.search_long("pytest");LongTermMemory(content='项目约定:测试用 pytest',confidence=0.8);# 命中按子串,生产换向量|tests 真实输出
 
 #PAGE 应用:个性化助手
 • 记住用户称呼与偏好
@@ -468,7 +468,7 @@ Q4 四个评估指标怎么组合看?
 • 检索:auth 相关代码+文档
 • 回答:调用链+文件行号引用
 >>平台测试语料可复现
-#TERM 检索+引用输出实测,Q: 该项目的鉴权链路是怎样的?;检索: auth.py(3 命中) middleware.py(2);回答: 入口 middleware 拦截 → auth.py 校验;引用: src/auth.py:42-58, middleware.py:11;# 文件+行号引用是交付标准|tests 语料复现
+#TERM 检索+引用输出实测|Q: 该项目的鉴权链路是怎样的?;检索: auth.py(3 命中) middleware.py(2);回答: 入口 middleware 拦截 → auth.py 校验;引用: src/auth.py:42-58, middleware.py:11;# 文件+行号引用是交付标准|tests 语料复现
 
 #PAGE 典型任务②:影响面分析
 • 问:新增支付渠道要改哪些模块?
@@ -479,7 +479,7 @@ Q4 四个评估指标怎么组合看?
 • 检索:异常类+历史修复经验
 • 回答:根因分析+代码证据
 >>记忆与检索联合发力
-#TERM 异常问答实测,Q: 这个 TimeoutError 的根因是什么?;检索: 异常类(2)+历史修复(1);回答: 第三方超时未设+重试缺失;引用: services/pay.py:88, wiki/fixes.md#12;# 记忆与检索联合发力|tests 语料
+#TERM 异常问答实测|Q: 这个 TimeoutError 的根因是什么?;检索: 异常类(2)+历史修复(1);回答: 第三方超时未设+重试缺失;引用: services/pay.py:88, wiki/fixes.md#12;# 记忆与检索联合发力|tests 语料
 
 #PAGE 踩坑:索引滞后
 • 代码改了索引没更新

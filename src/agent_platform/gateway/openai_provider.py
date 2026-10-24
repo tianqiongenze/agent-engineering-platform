@@ -25,10 +25,13 @@ class OpenAICompatibleProvider:
         base_url: str,
         api_key: str,
         model: str,
+        logical_map: dict[str, str] | None = None,
         timeout_s: float = 60.0,
         client: httpx.AsyncClient | None = None,
     ) -> None:
         self.model = model
+        # 路由逻辑名(primary/fast)→ 物理模型映射;P0 修复:req.model 必须影响实际请求
+        self.logical_map = logical_map or {}
         self._client = client or httpx.AsyncClient(base_url=base_url, timeout=timeout_s)
         self._client.headers.update({"Authorization": f"Bearer {api_key}"})
         self.call_count = 0
@@ -38,11 +41,19 @@ class OpenAICompatibleProvider:
         base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
         api_key = os.getenv("OPENAI_API_KEY", "")
         model = os.getenv("LLM_MODEL_PRIMARY", "gpt-4o-mini")
-        return cls(base_url=base_url, api_key=api_key, model=model)
+        fast = os.getenv("LLM_MODEL_FAST", model)
+        return cls(
+            base_url=base_url, api_key=api_key, model=model,
+            logical_map={"primary": model, "fast": fast},
+        )
+
+    def resolve_model(self, logical: str) -> str:
+        """路由契约:链上逻辑名必须映射到物理模型(P0 修复)。"""
+        return self.logical_map.get(logical, self.model)
 
     def _payload(self, req: ChatRequest, *, stream: bool) -> dict[str, Any]:
         payload: dict[str, Any] = {
-            "model": self.model or req.model,
+            "model": self.resolve_model(req.model),
             "messages": [{"role": m.role, "content": m.content} for m in req.messages],
             "temperature": req.temperature,
             "top_p": req.top_p,
@@ -79,8 +90,11 @@ class OpenAICompatibleProvider:
             raise ProviderError(f"HTTP {exc.response.status_code}: {body}") from exc
         except httpx.HTTPError as exc:
             raise ProviderError(f"network error: {exc}") from exc
-        data = resp.json()
-        choice = data["choices"][0]
+        try:
+            data = resp.json()
+            choice = data["choices"][0]
+        except Exception as exc:  # P2-10: 畸形 200 统一收敛,fallback 可触发
+            raise ProviderError(f"malformed 200 response: {exc}") from exc
         return ChatResponse(
             model=data.get("model", req.model),
             content=choice["message"]["content"],
@@ -106,7 +120,10 @@ class OpenAICompatibleProvider:
                         if data == "[DONE]":
                             break
                         continue
-                    chunk = json.loads(data)
+                    try:
+                        chunk = json.loads(data)
+                    except Exception as exc:  # P2-10
+                        raise ProviderError(f"malformed stream frame: {exc}") from exc
                     usage = chunk.get("usage")
                     if usage:
                         saw_usage = True

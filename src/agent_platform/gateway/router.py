@@ -25,6 +25,8 @@ class AttemptRecord:
 class ModelRouter:
     chain: list[str]
     provider: LLMProvider
+    # 注意:attempts 为实例留痕(Trace 数据源);共享实例下有串扰,
+    # 生产用法为每请求新建 router(见 api/app.py)——轻量 dataclass,零开销。
     attempts: list[AttemptRecord] = field(default_factory=list)
 
     async def complete(self, req: ChatRequest) -> ChatResponse:

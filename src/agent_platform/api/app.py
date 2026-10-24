@@ -40,6 +40,22 @@ from agent_platform.security import (
 )
 
 _LLM_PROVIDER = os.getenv("LLM_PROVIDER", "mock")
+
+
+async def _stream_with_fallback(provider, router, req):
+    """流式 fallback:主链逐模型尝试(P1-4);与 router.complete 同降级语义。"""
+    from agent_platform.gateway.provider import ProviderError
+
+    last_exc: Exception | None = None
+    for model in router.chain:
+        try:
+            async for event in provider.stream_events(req.model_copy(update={"model": model})):
+                yield event
+            return
+        except ProviderError as exc:
+            last_exc = exc
+    if last_exc is not None:
+        raise last_exc
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 
@@ -121,10 +137,34 @@ def create_app() -> FastAPI:
         refill_per_s=float(os.getenv("SEC_RATE_REFILL", "2")),
     )
     security = SecurityStack(limiter=limiter)
-    jwt_codec = JwtCodec(os.getenv("SEC_JWT_SECRET", "dev-secret-change-me"))
+    # P1-3: 生产/强鉴权下默认密钥必须 fail-fast(SCS 铁律:禁伪密钥)
+    jwt_secret = os.getenv("SEC_JWT_SECRET", "")
     jwt_required = os.getenv("SEC_JWT_REQUIRED", "0") == "1"
+    if not jwt_secret:
+        if jwt_required or _LLM_PROVIDER != "mock":
+            raise RuntimeError(
+                "SEC_JWT_SECRET must be set when SEC_JWT_REQUIRED=1 or real provider is on "
+                "(refusing to run with a forgeable default secret)"
+            )
+        jwt_secret = "dev-secret-change-me"  # noqa: S105 - 仅 dev(mock+匿名)路径可达
+    jwt_codec = JwtCodec(jwt_secret)
     provider = build_provider()
-    router = ModelRouter(chain=["primary", "fast"], provider=provider)
+    # P2-17: 进程优雅关停(GSD 铁律)
+    from contextlib import asynccontextmanager
+
+    @asynccontextmanager
+    async def _lifespan(_app):
+        yield
+        if hasattr(provider, "aclose"):
+            await provider.aclose()
+
+    app.router.lifespan_context = _lifespan
+    # P0-1c: 路由链与 GraphQL models 查询同源(单一事实源)
+    chain = [
+        m.strip()
+        for m in os.getenv("LLM_MODEL_CHAIN", "primary,fast").split(",")
+        if m.strip()
+    ]
 
     from strawberry.fastapi import GraphQLRouter
 
@@ -136,19 +176,24 @@ def create_app() -> FastAPI:
 
     @app.get("/metrics")
     async def metrics(request: Request) -> Response:
-        # OSW:受保护指标端点(业界共识;/metrics 泄露运维细节)
+        # OSW:受保护指标端点;P1-2 修复:保护开启即强制持证,不随全局开关旁路
         if os.getenv("METRICS_PROTECTED", "0") == "1":
             try:
-                authenticate_or_401(request, jwt_codec)
+                authenticate_or_401(request, jwt_codec, required=True)
             except AuthError as exc:
                 raise HTTPException(status_code=401, detail=str(exc)) from exc
         body, ctype = M.render_metrics()
         return Response(content=body, media_type=ctype)
 
-    def authenticate_or_401(request: Request, codec: JwtCodec) -> Principal:
+    def authenticate_or_401(
+        request: Request, codec: JwtCodec, required: bool | None = None
+    ) -> Principal:
         from agent_platform.security.auth import authenticate
 
-        return authenticate(request.headers.get("authorization"), codec, required=jwt_required)
+        return authenticate(
+            request.headers.get("authorization"), codec,
+            required=jwt_required if required is None else required,
+        )
 
     @app.get("/v1/tools")
     async def list_tools() -> list[dict[str, str]]:
@@ -192,19 +237,28 @@ def create_app() -> FastAPI:
 
         async def sse() -> AsyncIterator[bytes]:
             started = time.perf_counter()
-            if body.stream:
-                async for event in provider.stream_events(req):
-                    payload: dict[str, Any] = {"delta": event.delta, "usage": None}
-                    if event.usage:
-                        payload = {"delta": "", "usage": event.usage.model_dump()}
+            try:
+                if body.stream:
+                    # P1-4: 流式与路由降级同语义;末帧 usage 保证成本留痕
+                    events = _stream_with_fallback(provider, chain, req)
+                    async for event in events:
+                        payload: dict[str, Any] = {"delta": event.delta, "usage": None}
+                        if event.usage:
+                            payload = {"delta": "", "usage": event.usage.model_dump()}
+                        yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n".encode()
+                    yield b"data: [DONE]\n\n"
+                else:
+                    resp = await ModelRouter(chain=chain, provider=provider).complete(req)
+                    payload = resp.model_dump()
                     yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n".encode()
+                    yield b"data: [DONE]\n\n"
+                M.track_llm(_LLM_PROVIDER, "ok", time.perf_counter() - started)
+            except Exception as exc:
+                # P2-11: 指标闭合——错误必须计入 result="error" 并向客户端发结构化错误帧
+                M.track_llm(_LLM_PROVIDER, "error", time.perf_counter() - started)
+                err = {"error": str(exc)[:200]}
+                yield f"data: {json.dumps(err, ensure_ascii=False)}\n\n".encode()
                 yield b"data: [DONE]\n\n"
-            else:
-                resp = await router.complete(req)
-                payload = resp.model_dump()
-                yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n".encode()
-                yield b"data: [DONE]\n\n"
-            M.track_llm(_LLM_PROVIDER, "ok", time.perf_counter() - started)
 
         return StreamingResponse(sse(), media_type="text/event-stream")
 

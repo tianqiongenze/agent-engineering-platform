@@ -71,7 +71,7 @@ Lab2 验收清单
 • 参数:city(string,必填)
 • 风险:READ,人人可调
 >>平台测试用它演示全流程
-#TERM get_weather 端到端实测,$ executor.execute("get_weather", {"city": "Beijing"});ToolResult(ok=True, output='sunny::Beijing', latency_ms=0.4);AuditEvent(tool='get_weather', args={'city':'Beijing'});# READ 工具+agent 角色:直接放行|tests 真实断言
+#TERM get_weather 端到端实测|$ executor.execute("get_weather", {"city": "Beijing"});ToolResult(ok=True, output='sunny::Beijing', latency_ms=0.4);AuditEvent(tool='get_weather', args={'city':'Beijing'});# READ 工具+agent 角色:直接放行|tests 真实断言
 
 #PAGE 应用:订单查询工具
 • 参数:order_id+权限透传
@@ -127,7 +127,7 @@ Q4 并行调用的前提条件是什么?
 • 按分类/风险过滤
 • 只暴露 enabled 的工具
 >> discover("天气") 立即可用
-#TERM discover 检索实测,$ reg.discover("天气");ToolSpec(name='get_weather', risk=READ);$ reg.discover("删除");(空)  # 已 disable 的不出现;# 只返回 enabled:下线即刻生效|tests 真实断言
+#TERM discover 检索实测|$ reg.discover("天气");ToolSpec(name='get_weather', risk=READ);$ reg.discover("删除");(空)  # 已 disable 的不出现;# 只返回 enabled:下线即刻生效|tests 真实断言
 
 #PAGE 元数据:超越函数签名
 • 业务域/负责人/依赖服务
@@ -268,7 +268,7 @@ Q4 你如何验证工具描述改好了?
 • 强制 LIMIT 与超时
 • 禁止 DDL/DML 关键词
 • 全部 SQL 进审计日志
-#TERM SQL 四道闸实测,只读账号: SELECT only;表级权限: business_ro 白名单;强制 LIMIT 1000 + 超时 3s;DDL/DML 关键词静态拦截;# 全部 SQL 进审计(哈希链防篡改);# NL2SQL 永远不直连生产写库|风控栈配置实录
+#TERM SQL 四道闸实测|只读账号: SELECT only;表级权限: business_ro 白名单;强制 LIMIT 1000 + 超时 3s;DDL/DML 关键词静态拦截;# 全部 SQL 进审计(哈希链防篡改);# NL2SQL 永远不直连生产写库|风控栈配置实录
 
 #PAGE Shell 风险控制
 • 命令白名单机制
@@ -450,7 +450,7 @@ Q4 Server 升级的风险如何防控?
 • call:命令行直接调工具
 • 脱离模型单独验证工具
 >>工具先行测试,再接模型
-#TERM CLI 工具调试实测,$ aep tools list;get_weather [read] search_code [read];run_test [write] drop_table [dangerous];$ aep tools call get_weather --city BJ;sunny::BJ  (latency 0.4ms);# 工具先单测,再接模型|教学调试闭环
+#TERM CLI 工具调试实测|$ aep tools list;get_weather [read] search_code [read];run_test [write] drop_table [dangerous];$ aep tools call get_weather --city BJ;sunny::BJ  (latency 0.4ms);# 工具先单测,再接模型|教学调试闭环
 
 #PAGE Trace:工具调用全链路
 • 选择(模型意图)→ 参数生成

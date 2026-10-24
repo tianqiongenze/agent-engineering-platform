@@ -277,7 +277,7 @@ Q4 计划缓存的前提是什么?
 >>平台测试:test_checkpoint_resumes
 #CODE DatabaseRouter:异步写会话+锚定|src/agent_platform/shared/dao.py:34-52
 
-#TERM kill/resume 演示实录,$ kill -9 <agent-pid>  # 模拟崩溃;进程消失,Checkpoint 已落盘;$ loop2 = AgentLoop(resume_from=run_id);COMPLETED  历史观察完整带回;# 每轮 save(深拷贝)是底气|tests 真实复现
+#TERM kill/resume 演示实录|$ kill -9 <agent-pid>  # 模拟崩溃;进程消失,Checkpoint 已落盘;$ loop2 = AgentLoop(resume_from=run_id);COMPLETED  历史观察完整带回;# 每轮 save(深拷贝)是底气|tests 真实复现
 
 #PAGE 失败任务复现
 • 失败时保存完整现场
@@ -339,7 +339,7 @@ Q4 为什么每轮都要落盘?
 • allowed_roots 与 writable_roots 分离
 • 默认拒绝,显式授权
 >>读≠写,最小权限原则
-#TERM 路径逃逸攻防实测,$ sandbox.check_read("repo/../../etc/passwd");SandboxViolation: read denied (realpath 归一后判定);$ ln -s /etc/passwd evil && read evil;SandboxViolation: symlink 逃逸被拦;# realpath+resolve 后再判前缀|两连攻击全拦
+#TERM 路径逃逸攻防实测|$ sandbox.check_read("repo/../../etc/passwd");SandboxViolation: read denied (realpath 归一后判定);$ ln -s /etc/passwd evil && read evil;SandboxViolation: symlink 逃逸被拦;# realpath+resolve 后再判前缀|两连攻击全拦
 
 #PAGE Shell 边界实现
 • 命令头必须进白名单
@@ -508,7 +508,7 @@ Q4 本地与容器沙箱怎么选?
 • 测试注入 Mock 实现
 • 决策脚本化(平台 ScriptedDecider)
 >>确定性测试是平台根基
-#TERM 编排层测试实测,$ uv run pytest -m unit tests/unit/orchestration;............ 12 passed in 0.31s;# ScriptedDecider:决策脚本化;# 四条终止路径全覆盖(含死循环熔断);# 无需真实模型即可回归编排层|tests 真实输出
+#TERM 编排层测试实测|$ uv run pytest -m unit tests/unit/orchestration;............ 12 passed in 0.31s;# ScriptedDecider:决策脚本化;# 四条终止路径全覆盖(含死循环熔断);# 无需真实模型即可回归编排层|tests 真实输出
 
 #PAGE 本章小结
 • Loop:四出口+死循环熔断

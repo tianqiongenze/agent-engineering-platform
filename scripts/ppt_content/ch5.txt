@@ -167,7 +167,7 @@ Q4 什么时候必须人工仲裁?
 • 平台:aspect 字段显式声明
 • 仲裁:证据数量多者胜
 >>不同 aspect 差异不算冲突
-#TERM 仲裁实测输出,$ report = await sup.run(争议任务, tasks, workers);Conflict(field='verdict', conclusions=['结论甲','结论乙']);arbitrated_verdict='结论乙'  # 证据×3>×1;# 同 aspect 才冲突:误报为零|tests 真实断言
+#TERM 仲裁实测输出|$ report = await sup.run(争议任务, tasks, workers);Conflict(field='verdict', conclusions=['结论甲','结论乙']);arbitrated_verdict='结论乙'  # 证据×3>×1;# 同 aspect 才冲突:误报为零|tests 真实断言
 
 #PAGE 应用:跨仓库影响分析
 • 每仓库一个 Worker 平行扫
@@ -254,7 +254,7 @@ Q4 超时 Worker 的结果怎么处理?
 • 跨 Agent/跨场景/跨项目
 • 减少重复 Prompt 与流程设计
 >>一次沉淀,处处受益
-#TERM registry.find 实测,$ reg.find("帮我做一次生产事故复盘 分析根因");SkillDef(name='incident-review', version='2.0');$ reg.register(同名 version='1.5');ValueError: version must increase;# 倒退注册直接拒绝|tests 真实断言
+#TERM registry.find 实测|$ reg.find("帮我做一次生产事故复盘 分析根因");SkillDef(name='incident-review', version='2.0');$ reg.register(同名 version='1.5');ValueError: version must increase;# 倒退注册直接拒绝|tests 真实断言
 
 #PAGE 应用:竞品分析 Skill
 • 步骤:搜集/交叉验证/分析/成文
@@ -383,6 +383,8 @@ Q4 如何让 Skill 越用越准?
 • Judge:一次额外调用
 • 人工:最贵,只用于抽检
 >>按指标重要性分配采集方式
+#GRID 2026 前沿④:Agent 工程化平台|LLM OS 叙事:Agent 成为新应用层;LangSmith:trace 数据飞轮(标注→训练);AgentOps:上线后健康分+回放即调试;平台对照:EvalRunner+Trace+Replay 同构|cols=2|岗位:AgentOps 工程师 2026 新增
+
 #PAGE EvalRunner 数据结构
 • GoldenCase → AgentAnswer → CaseVerdict
 • EvalReport:成功率+工具准确率
@@ -466,6 +468,8 @@ Q4 回归双清单怎么读?
 • 反复针对 20 题调优
 • 真实任务反而变差
 • 治理:保留隐藏评测集
+#GRID 2026 前沿③:评测科学化|SWE-bench Verified:人工核验子集防污染;Agent RL:用任务成功率当奖励直接训练(2026 主线);红队自动化:对抗样本库持续攻防;在线 A/B:多臂老虎机自动择优|cols=2|前沿=评测即训练信号
+
 #PAGE 优化:失败注入测试
 • 主动制造工具故障
 • 验证恢复率与降级路径

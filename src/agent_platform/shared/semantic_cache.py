@@ -68,6 +68,7 @@ class SemanticCache:
     exact: TwoLevelCache = field(default_factory=lambda: TwoLevelCache(l1_size=512))
     stats: SemanticStats = field(default_factory=SemanticStats)
     _vectors: list[tuple[Counter, str]] = field(default_factory=list)
+    _MAX_VECTORS = 4096  # 与 exact 层同生命周期的上界(P1:防无界增长)
 
     def _key(self, prompt: str) -> str:
         return "llm:" + hashlib.sha256(normalize(prompt).encode()).hexdigest()
@@ -96,6 +97,9 @@ class SemanticCache:
         key = self._key(prompt)
         self.exact.set(key, value)
         self._vectors.append((trigram_vec(prompt), key))
+        # P1 修复:向量侧与缓存侧同步淘汰,防长期增长
+        if len(self._vectors) > self._MAX_VECTORS:
+            del self._vectors[: len(self._vectors) - self._MAX_VECTORS]
 
     def invalidate_all(self) -> None:
         self._vectors.clear()

@@ -35,8 +35,9 @@ class PulsarAuditBus(AuditBus):
         self.topic = topic
         self._factory = factory or _default_factory
         self._producer: Any | None = None
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()  # 可重入:publish 同步路径嵌套 _send_blocking 需重入
         self._io_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="pulsar-audit")
+        self._closed = False
         self.published = 0
         self.dropped = 0
 
@@ -46,14 +47,27 @@ class PulsarAuditBus(AuditBus):
         return self._producer
 
     def _send_blocking(self, event: AuditEvent) -> None:
-        """真实网络发送(仅供线程池调用;失败复位 producer 待重建)。"""
+        """真实网络发送(仅供线程池调用;失败复位 producer 待重建)。
+
+        P2-14:producer 的取用与复位统一经锁(锁内仅对象交换,无网络 IO)。
+        """
+        with self._lock:
+            if self._closed:
+                return
+            producer_ref = self._producer
         try:
-            producer = self._ensure_producer()
-            producer.send(event.model_dump_json().encode())
+            if producer_ref is None:
+                producer_ref = self._factory(self.url, self.topic)
+                with self._lock:
+                    if self._closed:
+                        return
+                    self._producer = producer_ref
+            producer_ref.send(event.model_dump_json().encode())
             self.published += 1
         except Exception:  # 旁路降级:吞异常、计数、复位待重建
             self.dropped += 1
-            self._producer = None
+            with self._lock:
+                self._producer = None
 
     def publish(self, event: AuditEvent) -> None:
         """同步 API;在事件循环内自动移交 I/O 线程池,不阻塞主循环(审查重构项)。"""

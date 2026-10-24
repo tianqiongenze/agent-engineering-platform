@@ -27,6 +27,7 @@ class OutboxRecord:
     status: OutboxStatus = OutboxStatus.PENDING
     attempts: int = 0
     last_error: str | None = None
+    next_retry_at: float = 0.0  # P2-9:到期才可重试(指数退避)
 
 
 class PublishError(RuntimeError):
@@ -64,9 +65,14 @@ class OutboxRelay:
     dead_letters: list[OutboxRecord] = field(default_factory=list)
     published: list[OutboxRecord] = field(default_factory=list)
 
-    def relay_once(self) -> int:
+    def relay_once(self, *, now: float | None = None) -> int:
+        import time
+
+        now = time.monotonic() if now is None else now
         sent = 0
         for rec in self.store.pending():
+            if rec.next_retry_at > now:  # 退避未到期,本轮跳过
+                continue
             rec.attempts += 1
             try:
                 self.publisher(rec)
@@ -75,6 +81,9 @@ class OutboxRelay:
                 if rec.attempts >= self.max_attempts:
                     rec.status = OutboxStatus.DEAD
                     self.dead_letters.append(rec)
+                else:
+                    # P2-9:2^attempts 指数退避,给瞬时故障恢复窗口
+                    rec.next_retry_at = now + float(2 ** rec.attempts)
                 continue
             rec.status = OutboxStatus.SENT
             self.published.append(rec)

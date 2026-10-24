@@ -7,8 +7,11 @@ from __future__ import annotations
 
 import os
 
+# P2-16:黑名单仅为教学演示边界;生产必须容器级隔离(见部署手册 §9)
 _DANGEROUS_PATTERNS = (
     "--no-preserve-root",
+    "rm -rf /",
+    "rm -fr /",
     "mkfs",
     "| sh",
     "|sh",

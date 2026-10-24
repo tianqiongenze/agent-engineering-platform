@@ -37,10 +37,19 @@ class TokenBucketRateLimiter:
         self._buckets: dict[str, tuple[float, float]] = {}  # key -> (tokens, ts)
         self._lock = threading.Lock()
         self.rejected = 0
+        self._last_sweep = 0.0
+        self._MAX_BUCKETS = 100_000  # P1:按 key 洪泛设上界
 
     def acquire(self, key: str, cost: float = 1.0) -> None:
         with self._lock:
             now = time.monotonic()
+            # P1 修复:周期性惰性清扫过期桶(空桶 10 分钟未用即回收)
+            if now - self._last_sweep > 60 and len(self._buckets) > self._MAX_BUCKETS:
+                cutoff = now - 600
+                self._buckets = {
+                    k: v for k, v in self._buckets.items() if v[1] > cutoff
+                }
+                self._last_sweep = now
             tokens, ts = self._buckets.get(key, (float(self.capacity), now))
             tokens = min(self.capacity, tokens + (now - ts) * self.refill_per_s)
             if tokens < cost:
@@ -73,6 +82,13 @@ class ReplayGuard:
                 self.blocked += 1
                 raise ReplayDetected(f"replay detected: {idempotency_key[:16]}")
             self._seen[idempotency_key] = now
+            # P1 修复:清理后仍超限则强制截断(防唯一 key 洪泛)
+            if len(self._seen) > self.max_entries:
+                cutoff = now - self.ttl
+                self._seen = {k: v for k, v in self._seen.items() if v >= cutoff}
+                if len(self._seen) > self.max_entries:
+                    for k in list(self._seen)[: len(self._seen) - self.max_entries]:
+                        del self._seen[k]
 
 
 _INJECTION_PATTERNS = [

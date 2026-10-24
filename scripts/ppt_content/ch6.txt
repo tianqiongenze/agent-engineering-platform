@@ -63,6 +63,8 @@ Lab6 验收清单
 • 并发:同时处理请求数
 • 显存利用率
 >>容量规划按这四项
+#GRID 2026 前沿③:推理与安全评估|安全评估:LLM 红队基准(Owlut/AgentHarm 类);VLA:视觉-语言-动作模型(具身 Agent);部署:PD 分离已量产(vLLM v1);合规:等保 2.0 对 AI 日志的新要求|cols=2|安全评估进 CI 是趋势
+
 #PAGE 并发控制
 • 网关限流保护推理服务
 • 队列+优先级:关键业务插队
@@ -84,7 +86,7 @@ Lab6 验收清单
 • max_batch_size 拍太大
 • 高峰期 OOM 重启循环
 • 治理:压测定容量+水位告警
-#TERM OOM 处置实录,现象: 高峰期 CrashLoop 反复重启;根因: max_batch_size 拍脑袋过大;处置: 压测定容量+水位告警 80%;预防: 长上下文隔离到专用实例|Runbook 标准条目
+#TERM OOM 处置实录|现象: 高峰期 CrashLoop 反复重启;根因: max_batch_size 拍脑袋过大;处置: 压测定容量+水位告警 80%;预防: 长上下文隔离到专用实例|Runbook 标准条目
 
 #PAGE 踩坑:长上下文拖垮服务
 • 少数 128k 请求占满卡
@@ -294,7 +296,7 @@ Q4 为什么写工具不能缓存?
 >>BFF 的典型消费场景
 #CODE _SpanCtx:context manager|src/agent_platform/governance/trace.py:56-72
 
-#TERM GraphQL Trace 查询实测,query { runs(state: "failed", tenant: "acme") {;  id goal spans { name ok durationMs };}};→ 返回失败任务的 span 树;下钻: 最慢 span 一目了然;# BFF 按需取字段,避免 N+1|教学控制台同款查询
+#TERM GraphQL Trace 查询实测|query { runs(state: "failed", tenant: "acme") {;  id goal spans { name ok durationMs };}};→ 返回失败任务的 span 树;下钻: 最慢 span 一目了然;# BFF 按需取字段,避免 N+1|教学控制台同款查询
 
 #PAGE Replay 机制
 • 保存:输入/上下文/工具结果/状态

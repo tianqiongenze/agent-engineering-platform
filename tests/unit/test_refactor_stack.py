@@ -181,9 +181,12 @@ class TestOutbox:
             publisher=lambda rec: (_ for _ in ()).throw(RuntimeError("broker down")),
             max_attempts=3,
         )
-        relay.relay_once()
-        relay.relay_once()
-        relay.relay_once()
+        # P2-9:指数退避(2^attempts)——显式时钟推进到各到期点
+        relay.relay_once(now=0.0)
+        assert len(store.pending()) == 1  # 首败后退避中,未死信
+        relay.relay_once(now=2.0)  # 第 1 轮退避到期 → 第 2 次失败
+        assert len(store.pending()) == 1
+        relay.relay_once(now=6.0)  # 第 2 轮退避到期 → 第 3 次失败进死信
         assert len(relay.dead_letters) == 1
         assert relay.dead_letters[0].attempts == 3
         assert store.pending() == []

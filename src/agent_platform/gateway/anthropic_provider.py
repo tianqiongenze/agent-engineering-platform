@@ -27,10 +27,13 @@ class AnthropicMessagesProvider:
         base_url: str,
         api_key: str,
         model: str,
+        logical_map: dict[str, str] | None = None,
         timeout_s: float = 60.0,
         client: httpx.AsyncClient | None = None,
     ) -> None:
         self.model = model
+        # P0 修复:req.model(路由链)必须映射到物理模型
+        self.logical_map = logical_map or {}
         self._client = client or httpx.AsyncClient(base_url=base_url, timeout=timeout_s)
         # 认证头幂等合并:注入的 client 也必须带凭据(MockTransport 注入同样受益)
         self._client.headers.update(
@@ -46,11 +49,21 @@ class AnthropicMessagesProvider:
     def from_provider_rule(cls, rule: dict[str, Any]) -> AnthropicMessagesProvider:
         """从 ZCode provider_config.json 的 providerRule 直接装配。"""
         cfg = rule["config"]
+        order = cfg.get("modelOrder") or []
+        model = order[0] if order else "glm-5.3"
+        logical = {"primary": model}
+        if len(order) > 1:
+            logical["fast"] = order[1]
         return cls(
             base_url=cfg["api"]["baseUrl"],
             api_key=cfg["access"]["apiKey"],
-            model=cfg["modelOrder"][0],
+            model=model,
+            logical_map=logical,
         )
+
+    def resolve_model(self, logical: str) -> str:
+        """路由契约:链上逻辑名必须映射到物理模型(P0 修复)。"""
+        return self.logical_map.get(logical, self.model)
 
     def _payload(self, req: ChatRequest) -> dict[str, Any]:
         system_parts = [m.content for m in req.messages if m.role == "system"]
@@ -58,14 +71,13 @@ class AnthropicMessagesProvider:
             {"role": m.role, "content": m.content} for m in req.messages if m.role != "system"
         ]
         payload: dict[str, Any] = {
-            "model": self.model or req.model,
+            "model": self.resolve_model(req.model),
             "max_tokens": req.max_tokens,
             "messages": messages,
         }
         if system_parts:
             payload["system"] = "\n".join(system_parts)
-        if req.temperature != 0.7 or True:  # 显式透传,便于联调观察
-            payload["temperature"] = req.temperature
+        payload["temperature"] = req.temperature  # 显式透传,便于联调观察
         return payload
 
     async def complete(self, req: ChatRequest) -> ChatResponse:
@@ -79,7 +91,10 @@ class AnthropicMessagesProvider:
             raise ProviderError(f"HTTP {exc.response.status_code}: {body}") from exc
         except httpx.HTTPError as exc:
             raise ProviderError(f"network error: {exc}") from exc
-        data = resp.json()
+        try:
+            data = resp.json()
+        except Exception as exc:  # P2-10: 畸形 200 统一收敛
+            raise ProviderError(f"malformed 200 response: {exc}") from exc
         text = "".join(
             b.get("text", "") for b in data.get("content", []) if b.get("type") == "text"
         )
@@ -109,7 +124,10 @@ class AnthropicMessagesProvider:
                     data = line[len("data:") :].strip()
                     if not data:
                         continue
-                    chunk = json.loads(data)
+                    try:
+                        chunk = json.loads(data)
+                    except Exception as exc:  # P2-10
+                        raise ProviderError(f"malformed stream frame: {exc}") from exc
                     ctype = chunk.get("type")
                     if ctype == "content_block_delta":
                         delta = (chunk.get("delta") or {}).get("text") or ""

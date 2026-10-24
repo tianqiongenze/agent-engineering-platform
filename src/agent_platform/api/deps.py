@@ -37,11 +37,18 @@ async def _drop_table(ctx: ToolContext, table: str) -> str:
     return f"dropped::{table}"
 
 
+_registry: ToolRegistry | None = None
+
+
 def default_registry() -> ToolRegistry:
-    reg = ToolRegistry()
-    for fn in (_weather, _search_code, _run_test, _drop_table):
-        reg.register(fn.spec, fn.fn)  # type: ignore[attr-defined]
-    return reg
+    """模块级单例:管理面(enabled 状态)与执行面共享同一实例(P2-8)。"""
+    global _registry
+    if _registry is None:
+        reg = ToolRegistry()
+        for fn in (_weather, _search_code, _run_test, _drop_table):
+            reg.register(fn.spec, fn.fn)  # type: ignore[attr-defined]
+        _registry = reg
+    return _registry
 
 
 def default_executor() -> ToolExecutor:
