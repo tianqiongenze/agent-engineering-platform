@@ -169,14 +169,24 @@ def arch_diagram(slide, title: str, layers: list[list[str]], tag: str = "", flow
         # S5: 层名徽章贴在色带上方,增加可读性与密度
         label(slide, x0 + _px(6), y - _px(28), _px(200), _px(22),
               f"L{i + 1}", 11, color, True, align=PP_ALIGN.LEFT)
-        cw = (width - _px(16) * (len(comps) - 1)) // max(1, len(comps))
+        per_row = min(4, max(1, len(comps)))  # 落盘⑤:每行最多 4 组件,自动分行
+        rows_c = (len(comps) + per_row - 1) // per_row
+        sub_h = (lh - _px(8) * (rows_c - 1)) // rows_c
+        cw = (width - _px(16) * (per_row - 1)) // per_row
         for j, c in enumerate(comps):
-            cx = x0 + j * (cw + _px(16))
-            box(slide, cx, y, cw, lh, fill=WHITE, line=color)
-            box(slide, cx, y, _px(5), lh, fill=color, radius=False)
-            fs = 13 if len(c) <= 12 else (11 if len(c) <= 18 else 9)
-            label(slide, cx + _px(16), y, cw - _px(28), lh, c, fs, INK, True,
-                  align=PP_ALIGN.LEFT, spacing=1.15, wrap=False)
+            rr, cc = divmod(j, per_row)
+            cx = x0 + cc * (cw + _px(16))
+            cy = y + rr * (sub_h + _px(8))
+            box(slide, cx, cy, cw, sub_h, fill=WHITE, line=color)
+            box(slide, cx, cy, _px(5), sub_h, fill=color, radius=False)
+            avail_px = int((cw - _px(28)) / 9525)  # 落盘⑤:动态字号按实测宽度收缩
+            _cjk = sum(1 for ch in c if ord(ch) > 0x2E80)
+            _lat = len(c) - _cjk
+            fs = 13
+            while fs > 8 and fs * (_cjk * 1.33 + _lat * 0.62) > avail_px:
+                fs -= 1
+            label(slide, cx + _px(16), cy, cw - _px(28), sub_h, c, fs, INK, True,
+                  align=PP_ALIGN.LEFT, spacing=1.15)
         if i < n - 1:
             arrow(slide, W // 2, y + lh + _px(6), W // 2, y + lh + gap - _px(4), GREY, 1.4)
             if flows:
@@ -299,6 +309,7 @@ def state_diagram(slide, title: str, spec: str, tag: str = ""):
             t=(x + bw // 2, y), b=(x + bw // 2, y + bh),
             row=r, col=c, x=x, y=y, w=bw, h=bh,
         )
+    skipped: list[tuple[str, str]] = []  # 落盘④:非相邻转移收集
     index = {nd: i for i, nd in enumerate(nodes)}
     for a, b, lbl in edges:
         pa, pb = pos[a], pos[b]
@@ -328,31 +339,28 @@ def state_diagram(slide, title: str, spec: str, tag: str = ""):
             arrow(slide, x1, y1, x2, y2, color, 1.5)
             mx, my = x1, (y1 + y2) // 2
         else:
-            # 三修②:非相邻边走顶部总线(上方绕行,纵向段只贴框顶,不穿任何框体)
-            top_bus = y0 - _px(46)
-            sx, sy = pa["t"][0], pa["t"][1] - _px(2)
-            dx_, dy_ = pb["t"][0], pb["t"][1] - back - _px(2)
-            from pptx.enum.dml import MSO_LINE_DASH_STYLE
-
-            for seg in (
-                (sx, sy, sx, top_bus),
-                (sx, top_bus, dx_, top_bus),
-                (dx_, top_bus, dx_, dy_),
-            ):
-                conn = slide.shapes.add_connector(1, *seg)
-                conn.line.color.rgb = BORDER
-                conn.line.width = Pt(1)
-                conn.line.dash_style = MSO_LINE_DASH_STYLE.DASH
-                conn.shadow.inherit = False
+            # 落盘④:非相邻边不画线(任何绕行都会穿框或产生视觉噪声),
+            # 收集到底部转移清单统一渲染
+            skipped.append((a, b))
             continue
         if lbl:
-            # 修复:标签块按字宽精确加宽(CJK 全宽),单行不折行
-            text = lbl[:6]
-            lw = _px(30 + 22 * len(text))
-            lh_ = _px(30)
+            # 落盘③:标签上限 12 字(实测最长标签 11 字不截断),宽度按字型估算
+            text = lbl[:12]
+            _cjk = sum(1 for ch in text if ord(ch) > 0x2E80)
+            _lat = len(text) - _cjk
+            lw = _px(34 + int(21 * _cjk + 11.5 * _lat))
+            lh_ = _px(32)
             box(slide, mx - lw // 2, my - lh_ // 2, lw, lh_, fill=WHITE, line=BORDER)
             label(slide, mx - lw // 2, my - lh_ // 2, lw, lh_, text, 11, INK, True)
 
+
+
+    if skipped:
+        # 落盘④:非相邻转移以底部文字清单呈现(信息保留,零穿框风险)
+        items_text = "  ".join(f"{a} → {b}" for a, b in skipped[:6])
+        box(slide, _px(120), H - _px(66), W - _px(240), _px(40), fill=LIGHT)
+        label(slide, _px(136), H - _px(66), W - _px(272), _px(40),
+              f"非相邻转移:{items_text}", 11, GREY, align=PP_ALIGN.LEFT)
 
 
 # ── 4) 时序图 --------------------------------------------------------------
@@ -472,20 +480,48 @@ def chart_png(spec: str, out: Path) -> str:
             )
         ax.set_ylim(min(values) * 0.9 if min(values) > 0 else 0, max(values) * 1.15)
     elif kind == "donut":
-        wedges, _, autotexts = ax.pie(
-            values,
-            labels=labels,
-            colors=colors[: len(values)],
-            autopct="%1.1f%%",
-            startangle=90,
-            pctdistance=0.78,
-            wedgeprops=dict(width=0.42, edgecolor="white"),
-            textprops=dict(fontproperties=fp, fontsize=11, color="#0B1D3A"),
-        )
+        # 落盘⑥:>4 切片改右侧图例(小切片内联标签会互相叠印)
+        if len(values) > 4:
+            total = sum(values)
+
+            def _thin_pct(pct: float) -> str:
+                return f"{pct:.1f}%" if pct >= 6.0 else ""  # 落盘⑥b:薄片只留图例
+
+            wedges, _, autotexts = ax.pie(
+                values,
+                colors=colors[: len(values)],
+                autopct=_thin_pct,
+                startangle=90,
+                pctdistance=0.76,
+                wedgeprops=dict(width=0.42, edgecolor="white"),
+                textprops=dict(fontproperties=fp, fontsize=10, color="white"),
+            )
+            legend_labels = [f"{k}  {v:g}" for k, v in zip(labels, values, strict=True)]
+            ax.legend(
+                wedges,
+                legend_labels,
+                loc="center left",
+                bbox_to_anchor=(1.02, 0.5),
+                prop=fp,
+                frameon=False,
+                fontsize=10,
+            )
+            fig.subplots_adjust(right=0.70)
+        else:
+            wedges, _, autotexts = ax.pie(
+                values,
+                labels=labels,
+                colors=colors[: len(values)],
+                autopct="%1.1f%%",
+                startangle=90,
+                pctdistance=0.78,
+                wedgeprops=dict(width=0.42, edgecolor="white"),
+                textprops=dict(fontproperties=fp, fontsize=11, color="#0B1D3A"),
+            )
         for at in autotexts:
             at.set_color("white")
             at.set_fontweight("bold")
-    elif kind == "groupbar":  # data_part: label:a1/a2,b1/b2 (两组)
+    elif kind == "groupbar":
         groups = [kv.split("=") for kv in data_part.split(",")]
         gl = [g[0] for g in groups]
         import numpy as np

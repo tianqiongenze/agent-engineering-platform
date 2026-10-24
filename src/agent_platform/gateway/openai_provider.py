@@ -40,6 +40,10 @@ class OpenAICompatibleProvider:
     def from_env(cls) -> OpenAICompatibleProvider:
         base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
         api_key = os.getenv("OPENAI_API_KEY", "")
+        if not api_key:  # 复审 #9:空密钥 fail-fast(与 JWT fail-fast 对称)
+            raise RuntimeError(
+                "OPENAI_API_KEY must be set when LLM_PROVIDER=openai_compatible"
+            )
         model = os.getenv("LLM_MODEL_PRIMARY", "gpt-4o-mini")
         fast = os.getenv("LLM_MODEL_FAST", model)
         return cls(
@@ -48,8 +52,16 @@ class OpenAICompatibleProvider:
         )
 
     def resolve_model(self, logical: str) -> str:
-        """路由契约:链上逻辑名必须映射到物理模型(P0 修复)。"""
-        return self.logical_map.get(logical, self.model)
+        """路由契约:链上逻辑名必须映射到物理模型(P0 修复)。
+
+        复审 #4:未映射的逻辑名显式报错(触发链上 fallback 并留痕),
+        禁止静默回落 primary 导致客户端指定模型被偷换。
+        """
+        from agent_platform.gateway.provider import ProviderError
+
+        if logical not in self.logical_map:
+            raise ProviderError(f"unmapped logical model: {logical!r}")
+        return self.logical_map[logical]
 
     def _payload(self, req: ChatRequest, *, stream: bool) -> dict[str, Any]:
         payload: dict[str, Any] = {

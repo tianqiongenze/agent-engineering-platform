@@ -42,17 +42,23 @@ from agent_platform.security import (
 _LLM_PROVIDER = os.getenv("LLM_PROVIDER", "mock")
 
 
-async def _stream_with_fallback(provider, router, req):
-    """流式 fallback:主链逐模型尝试(P1-4);与 router.complete 同降级语义。"""
+async def _stream_with_fallback(provider, chain, req):
+    """流式 fallback(复审 #2):仅零输出失败才换模型,部分输出后失败直接上抛。"""
     from agent_platform.gateway.provider import ProviderError
 
     last_exc: Exception | None = None
-    for model in router.chain:
+    for model in chain:
+        emitted = False
         try:
             async for event in provider.stream_events(req.model_copy(update={"model": model})):
+                if event.delta or event.usage:
+                    emitted = True
                 yield event
             return
         except ProviderError as exc:
+            if emitted:
+                # 已向客户端发过内容,重放必然产生「A 片段+B 全文」损坏拼接
+                raise exc
             last_exc = exc
     if last_exc is not None:
         raise last_exc
@@ -210,8 +216,8 @@ def create_app() -> FastAPI:
             for s in reg.discover("")
         ]
 
-    @app.post("/v1/chat/completions")
-    async def chat_completions(body: ChatCompletionBody, request: Request) -> StreamingResponse:
+    @app.post("/v1/chat/completions", response_model=None)
+    async def chat_completions(body: ChatCompletionBody, request: Request) -> Response:
         # ① JWT/租户(可配置强制;开发态降级)
         try:
             principal = authenticate_or_401(request, jwt_codec)
@@ -224,9 +230,12 @@ def create_app() -> FastAPI:
         # ②③④ 注入→重放→限流
         try:
             security.check_request(client_key=client_key, text=prompt_text, idempotency_key=idem)
-        except (RateLimitExceeded, ReplayDetected) as exc:
-            M.track_security_block(type(exc).__name__)
+        except RateLimitExceeded as exc:
+            M.track_security_block("rate_limited")
             M.track_rate_limit_rejected()
+            raise HTTPException(status_code=429, detail=str(exc)) from exc
+        except ReplayDetected as exc:
+            M.track_security_block("replay")  # 复审 #3:重放不计入限流指标
             raise HTTPException(status_code=429, detail=str(exc)) from exc
         except InjectionDetected as exc:
             M.track_security_block("injection")
@@ -249,9 +258,8 @@ def create_app() -> FastAPI:
                     yield b"data: [DONE]\n\n"
                 else:
                     resp = await ModelRouter(chain=chain, provider=provider).complete(req)
-                    payload = resp.model_dump()
-                    yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n".encode()
-                    yield b"data: [DONE]\n\n"
+                    # 复审 #8:非流式按 OpenAI 风格返回完整 JSON(非 SSE 帧)
+                    yield json.dumps(resp.model_dump(), ensure_ascii=False).encode()
                 M.track_llm(_LLM_PROVIDER, "ok", time.perf_counter() - started)
             except Exception as exc:
                 # P2-11: 指标闭合——错误必须计入 result="error" 并向客户端发结构化错误帧
@@ -260,7 +268,14 @@ def create_app() -> FastAPI:
                 yield f"data: {json.dumps(err, ensure_ascii=False)}\n\n".encode()
                 yield b"data: [DONE]\n\n"
 
-        return StreamingResponse(sse(), media_type="text/event-stream")
+        if body.stream:
+            return StreamingResponse(sse(), media_type="text/event-stream")
+        from fastapi.responses import JSONResponse
+
+        chunks: list[bytes] = []
+        async for chunk in sse():
+            chunks.append(chunk)
+        return JSONResponse(content=json.loads(b"".join(chunks)))
 
     # ── Web 控制台(PWA 可安装,设计 Tokens 暗色主题)─────────
     if _STATIC_DIR.exists():

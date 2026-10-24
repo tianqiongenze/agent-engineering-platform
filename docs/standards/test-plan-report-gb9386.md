@@ -18,7 +18,7 @@ WAF 实机部署演练、Grafana 对接、多区域(见审计 P2/P3)。
 
 ## 2 测试报告(2026-10-04 执行)
 ### 2.1 单元测试
-**结果:125 passed / 0 failed;覆盖率 93%(1681 stmts)**;ruff All checks passed;mypy 40 文件零错误。
+**结果:126 passed / 0 failed;覆盖率 91%(v1.5 实测基线)**;ruff All checks passed;mypy 40 文件零错误。
 ### 2.2 集成测试
 **结果:5 passed / 0 failed / 0 skipped**(26s):
 | 用例 | 结论 | 关键断言 |

@@ -43,12 +43,17 @@ class TokenBucketRateLimiter:
     def acquire(self, key: str, cost: float = 1.0) -> None:
         with self._lock:
             now = time.monotonic()
-            # P1 修复:周期性惰性清扫过期桶(空桶 10 分钟未用即回收)
-            if now - self._last_sweep > 60 and len(self._buckets) > self._MAX_BUCKETS:
+            # P1 修复 + 复审 #5:超限立即清扫(硬上界);时间门只管低水位常规回收
+            over = len(self._buckets) > self._MAX_BUCKETS
+            if over or (now - self._last_sweep > 60 and len(self._buckets) > 1024):
                 cutoff = now - 600
                 self._buckets = {
                     k: v for k, v in self._buckets.items() if v[1] > cutoff
                 }
+                if over and len(self._buckets) > self._MAX_BUCKETS:
+                    # 清扫后仍超限(全部活跃):按插入序强制截断(与 ReplayGuard 对称)
+                    for k in list(self._buckets)[: len(self._buckets) - self._MAX_BUCKETS]:
+                        del self._buckets[k]
                 self._last_sweep = now
             tokens, ts = self._buckets.get(key, (float(self.capacity), now))
             tokens = min(self.capacity, tokens + (now - ts) * self.refill_per_s)

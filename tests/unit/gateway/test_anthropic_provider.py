@@ -17,7 +17,11 @@ pytestmark = pytest.mark.unit
 def make_provider(handler) -> AnthropicMessagesProvider:
     client = httpx.AsyncClient(base_url="http://test", transport=httpx.MockTransport(handler))
     return AnthropicMessagesProvider(
-        base_url="http://test", api_key="k", model="glm-5.3", client=client
+        base_url="http://test",
+        api_key="k",
+        model="glm-5.3",
+        logical_map={"glm-5.3": "glm-5.3", "primary": "glm-5.3", "fast": "glm-5.3"},
+        client=client,
     )
 
 

@@ -20,7 +20,11 @@ def make_provider(handler) -> OpenAICompatibleProvider:
         transport=httpx.MockTransport(handler),
     )
     return OpenAICompatibleProvider(
-        base_url="http://test/v1", api_key="k", model="gpt-x", client=client
+        base_url="http://test/v1",
+        api_key="k",
+        model="gpt-x",
+        logical_map={"gpt-x": "gpt-x", "primary": "gpt-x", "fast": "gpt-x"},
+        client=client,
     )
 
 

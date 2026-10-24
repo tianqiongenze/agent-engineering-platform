@@ -62,8 +62,16 @@ class AnthropicMessagesProvider:
         )
 
     def resolve_model(self, logical: str) -> str:
-        """路由契约:链上逻辑名必须映射到物理模型(P0 修复)。"""
-        return self.logical_map.get(logical, self.model)
+        """路由契约:链上逻辑名必须映射到物理模型(P0 修复)。
+
+        复审 #4:未映射的逻辑名显式报错(触发链上 fallback 并留痕),
+        禁止静默回落 primary 导致客户端指定模型被偷换。
+        """
+        from agent_platform.gateway.provider import ProviderError
+
+        if logical not in self.logical_map:
+            raise ProviderError(f"unmapped logical model: {logical!r}")
+        return self.logical_map[logical]
 
     def _payload(self, req: ChatRequest) -> dict[str, Any]:
         system_parts = [m.content for m in req.messages if m.role == "system"]

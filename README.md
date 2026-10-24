@@ -2,7 +2,7 @@
 
 > 《AI Agent 全栈工程师训练营》配套工程 · **v1.3**
 > SDD / TDD / DDD / TOGAF · 工业件:GraphQL · Pulsar · PG 读写分离 · 两级缓存 · 风控层 · Outbox
-> **当前质量基线:110 单测全绿 · 覆盖率 ≥95% · ruff/mypy 零错误 · 真实 GLM 联调通过**
+> **当前质量基线:126 单测 + 5 真实集成全绿 · 覆盖率 91% · ruff/mypy 零错误 · 真实 GLM 双协议 + Pulsar + PG 主从联调通过 · 审计 9.4/10**
 
 [审计打分报告 9.4/10](docs/audit/project-audit-report.md) · [前端多端方案](docs/frontend/multi-end-design.md) · [AC6 联调证据](docs/specs/ac6-live-verification.md) · [Runbook](docs/runbooks/runbook.md)
 
@@ -48,8 +48,8 @@ flowchart LR
 
 | 项 | 结果 | 复现命令 |
 |---|---|---|
-| 单元测试 | **125 passed**(另 5 真实集成:Pulsar/PG/GLM) | `uv run pytest -m unit` |
-| 覆盖率 | **93%**(门禁 80%,CI 红) | `uv run pytest -m unit --cov` |
+| 单元测试 | **126 passed**(另 5 真实集成:Pulsar/PG/GLM) | `uv run pytest -m unit` |
+| 覆盖率 | **91%**(门禁 80%,CI 红) | `uv run pytest -m unit --cov` |
 | Lint / 类型 | All checks passed / 33 文件零错误 | `uv run ruff check src tests` · `uv run mypy src` |
 | 真实联调(AC6) | **GLM-5.3 双协议通过** | `uv run pytest -m integration -v` |
 | 风控端到端 | 注入 400 / 重放 429 / 限流 429 | Runbook §5 |

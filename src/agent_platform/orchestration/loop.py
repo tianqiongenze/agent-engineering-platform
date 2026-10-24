@@ -20,6 +20,7 @@ from agent_platform.tools.runtime import (
     RiskLevel,
     ToolContext,
     ToolExecutor,
+    ToolNotFoundError,
     ToolRegistry,
     ToolResult,
     ValidationFailedError,
@@ -164,8 +165,13 @@ class AgentLoop:
             ctx = ToolContext(role="agent", run_id=run.run_id)
             try:
                 result = await self.executor.execute(action.tool, action.args, ctx)
-            except (PermissionDeniedError, ValidationFailedError) as exc:
-                # P2-12 修复:越权/参数错不终结 run,记为失败步骤继续循环
+            except (
+                PermissionDeniedError,
+                ValidationFailedError,
+                ToolNotFoundError,
+            ) as exc:
+                # P2-12 + 复审 #7:越权/参数错/幻觉工具名均不终结 run,
+                # 记为失败步骤继续循环,交由死循环/上限机制收敛
                 result = ToolResult(ok=False, error=str(exc), tool=action.tool)
             step = StepRecord(
                 tool=action.tool,

@@ -16,6 +16,7 @@ from typing import Any, Protocol
 class KVStore(Protocol):
     def get(self, key: str) -> Any | None: ...
     def set(self, key: str, value: Any, ttl_s: float | None = None) -> None: ...
+    def delete(self, key: str) -> None: ...  # 复审 #6:失效必须走协议,禁反射私有字段
 
 
 class InMemoryKV:
@@ -40,6 +41,9 @@ class InMemoryKV:
             self._data.pop(next(iter(self._data)))  # 简易 FIFO 淘汰
         expires = time.monotonic() + ttl_s if ttl_s else None
         self._data[key] = (value, expires)
+
+    def delete(self, key: str) -> None:
+        self._data.pop(key, None)
 
 
 @dataclass
@@ -122,5 +126,4 @@ class TwoLevelCache:
     def invalidate(self, key: str) -> None:
         with self._lock:
             self._l1.pop(key, None)
-        if hasattr(self._l2, "_data"):
-            self._l2._data.pop(key, None)  # type: ignore[attr-defined]  # 教学实现直清
+        self._l2.delete(key)  # 复审 #6:走协议 delete,对真实 KV(Redis 等)同样生效

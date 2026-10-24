@@ -2,6 +2,8 @@
 
 韧性原则:审计是旁路,Producer 不可用时丢弃计数并复位,下条消息重建连接;
 绝不向工具执行主流程抛异常。真实 Pulsar 连接属 integration profile。
+生命周期(P2-14 完整版):close() 先置 _closed(拒绝新投递)→ 排空线程池 →
+关 producer;producer 的取用与复位统一经锁(锁内仅对象交换,无网络 IO)。
 """
 
 from __future__ import annotations
@@ -41,16 +43,8 @@ class PulsarAuditBus(AuditBus):
         self.published = 0
         self.dropped = 0
 
-    def _ensure_producer(self) -> Any:
-        if self._producer is None:
-            self._producer = self._factory(self.url, self.topic)
-        return self._producer
-
     def _send_blocking(self, event: AuditEvent) -> None:
-        """真实网络发送(仅供线程池调用;失败复位 producer 待重建)。
-
-        P2-14:producer 的取用与复位统一经锁(锁内仅对象交换,无网络 IO)。
-        """
+        """真实网络发送(仅供线程池调用;失败复位 producer 待重建)。"""
         with self._lock:
             if self._closed:
                 return
@@ -76,12 +70,24 @@ class PulsarAuditBus(AuditBus):
         except RuntimeError:
             loop = None
         if loop is not None:
-            loop.run_in_executor(self._io_pool, self._send_blocking, event)
+            if self._closed:  # 运行行为探针 #7:关停后静默丢弃,不再复活也不炸线程池
+                self.dropped += 1
+                return
+            try:
+                loop.run_in_executor(self._io_pool, self._send_blocking, event)
+            except RuntimeError:  # 线程池已 shutdown(竞态窗口)
+                self.dropped += 1
         else:
             with self._lock:
                 self._send_blocking(event)
 
     def close(self) -> None:
+        """幂等关停:置 _closed → 排空在途投递 → 关 producer(生命周期闭环)。"""
+        with self._lock:
+            if self._closed:
+                return
+            self._closed = True
+        self._io_pool.shutdown(wait=True)
         with self._lock:
             if self._producer is not None:
                 try:
